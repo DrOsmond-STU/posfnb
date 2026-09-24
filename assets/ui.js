@@ -86,7 +86,9 @@ const NAV = [
     ['lap-penjualan', 'Laporan Penjualan', 'chart-column', 'Tren penjualan, jam sibuk, metode bayar, dan menu engineering.'],
     ['lap-keuangan', 'Laporan Keuangan', 'landmark', 'Laba rugi, neraca, arus kas, jurnal umum, dan buku besar dari transaksi otomatis.'],
     ['lap-persediaan', 'Laporan Persediaan', 'clipboard-list', 'Mutasi setiap bahan dari saldo awal sampai saldo akhir, direkonsiliasi ke akun persediaan.']] },
-  { group: 'Sistem', items: [['pengaturan', 'Pengaturan', 'settings', 'Profil outlet, pajak dan service charge, pengguna, dan perangkat.']] },
+  { group: 'Sistem', items: [
+    ['pengguna', 'Pengguna & Akses', 'shield', 'Akun pengguna, peran, matriks hak akses, dan log aktivitas masuk.'],
+    ['pengaturan', 'Pengaturan', 'settings', 'Profil outlet, pajak dan service charge, dan perangkat.']] },
 ];
 const VIEWS = {};
 const ACT = {};
@@ -100,11 +102,13 @@ function navBadge(key) {
   return '';
 }
 function renderNav() {
-  document.getElementById('nav').innerHTML = NAV.map(g =>
-    `<div class="nav-group">${g.group}</div>` + g.items.map(([k, label, ic]) => {
+  document.getElementById('nav').innerHTML = NAV.map(g => {
+    const items = g.items.filter(it => canView(it[0]));
+    return items.length ? `<div class="nav-group">${g.group}</div>` + items.map(([k, label, ic]) => {
       const b = navBadge(k);
       return `<a href="#${k}" class="${k === current ? 'active' : ''}" title="${label}">${icon(ic, 18)}<span>${label}</span>${b ? `<em class="badge">${b}</em>` : ''}</a>`;
-    }).join('')).join('');
+    }).join('') : '';
+  }).join('');
 }
 function navInfo(key) {
   for (const g of NAV) for (const it of g.items) if (it[0] === key) return { group: g.group, title: it[1], desc: it[3] };
@@ -112,9 +116,11 @@ function navInfo(key) {
 }
 
 function render() {
-  const key = VIEWS[current] ? current : 'dashboard';
+  if (!currentUser()) { showLogin(); return; }
+  const key = VIEWS[current] ? current : firstAllowed();
   const info = navInfo(key);
-  const h = VIEWS[key].hero ? VIEWS[key].hero() : {};
+  const allowed = canView(key);
+  const h = allowed && VIEWS[key].hero ? VIEWS[key].hero() : {};
   document.getElementById('page-title').textContent = h.title || info.title;
   document.getElementById('crumb').textContent = info.group + ' · ' + S.settings.outlet + ' ' + S.settings.branch.replace('Cabang ', '');
   document.getElementById('page-desc').textContent = h.desc || info.desc;
@@ -125,8 +131,10 @@ function render() {
   document.title = info.title + ' · Racik POS Resto';
   renderNav();
   const el = document.getElementById('view');
+  if (!allowed) { el.innerHTML = deniedHTML(key); audit('Akses ditolak', 'Modul ' + info.title); return; }
   el.innerHTML = VIEWS[key]();
   if (VIEWS[key].after) VIEWS[key].after(el);
+  applyPermUI(document.querySelector('.main'));
 }
 function go(key) {
   if (location.hash.slice(1) === key) { current = key; render(); window.scrollTo(0, 0); }
@@ -146,6 +154,7 @@ function openModal({ title, body, foot, size, onClose }) {
   ov.addEventListener('mousedown', e => { if (e.target === ov) closeModal(); });
   document.body.appendChild(ov);
   modalOnClose = onClose || null;
+  applyPermUI(ov);
   const f = ov.querySelector('[autofocus]'); if (f) f.focus();
   return ov;
 }
@@ -259,15 +268,15 @@ document.addEventListener('click', e => {
   const a = e.target.closest('[data-act]');
   if (!a) return;
   const name = a.getAttribute('data-act');
-  if (ACT[name]) { e.preventDefault(); ACT[name](a, e); }
+  if (ACT[name]) { e.preventDefault(); if (permOk(name)) ACT[name](a, e); }
 });
 document.addEventListener('input', e => {
   const a = e.target.closest('[data-in]');
-  if (a && ACT[a.getAttribute('data-in')]) ACT[a.getAttribute('data-in')](a, e);
+  if (a && ACT[a.getAttribute('data-in')] && permOk(a.getAttribute('data-in'))) ACT[a.getAttribute('data-in')](a, e);
 });
 document.addEventListener('change', e => {
   const a = e.target.closest('[data-ch]');
-  if (a && ACT[a.getAttribute('data-ch')]) ACT[a.getAttribute('data-ch')](a, e);
+  if (a && ACT[a.getAttribute('data-ch')] && permOk(a.getAttribute('data-ch'))) ACT[a.getAttribute('data-ch')](a, e);
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && modalEl()) closeModal(); });
 
@@ -285,38 +294,53 @@ ACT['theme-set'] = el => {
   if (v === 'system') delete root.dataset.theme; else root.dataset.theme = v;
   try { if (v === 'system') localStorage.removeItem('racikpos-theme'); else localStorage.setItem('racikpos-theme', v); } catch (e) { /* abaikan */ }
   paintChrome();
+  if (!document.getElementById('login').hidden) renderLogin();
 };
 
 function paintChrome() {
-  const cur = document.documentElement.dataset.theme || 'system';
-  document.getElementById('theme-switch').innerHTML = [['light', 'sun', 'Terang'], ['dark', 'moon', 'Gelap'], ['system', 'monitor', 'Ikuti sistem']]
-    .map(([v, ic, t]) => `<button type="button" class="${cur === v ? 'on' : ''}" data-act="theme-set" data-v="${v}" title="${t}" aria-label="Tema ${t}" aria-pressed="${cur === v}">${icon(ic, 15)}</button>`).join('');
+  document.getElementById('theme-switch').innerHTML = themeSwitchHTML();
   document.getElementById('brand-mark').innerHTML = icon('chef-hat', 22);
   document.getElementById('menu-btn').innerHTML = icon('menu');
   document.getElementById('collapse-ic').innerHTML = icon('chevron-left', 17);
-  const m = S.session.manager;
-  document.getElementById('avatar').textContent = m.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase();
-  document.getElementById('u-name').textContent = m;
-  document.getElementById('u-role').textContent = 'Manajer · ' + S.settings.branch;
+  document.getElementById('lock-btn').innerHTML = icon('shield', 16);
+  document.getElementById('logout-btn').innerHTML = icon('log-out', 16);
+  const u = currentUser(); if (!u) return;
+  document.getElementById('avatar').textContent = initials(u.name);
+  document.getElementById('u-name').textContent = u.name;
+  document.getElementById('u-role').textContent = roleById(u.role).name + ' · ' + S.settings.branch.replace('Cabang ', '');
 }
 
 let kdsTimer = null;
+/* setelah masuk: tampilkan aplikasi sesuai peran pengguna */
+function enterApp() {
+  const u = currentUser();
+  S.session.cashier = u.name;
+  S.session.manager = u.name;
+  document.getElementById('login').hidden = true;
+  document.getElementById('app').hidden = false;
+  paintChrome();
+  current = location.hash.slice(1) || firstAllowed();
+  if (!canView(current)) current = firstAllowed();
+  if (location.hash.slice(1) !== current) history.replaceState(null, '', '#' + current);
+  render();
+  window.scrollTo(0, 0);
+}
 function boot() {
   loadState();
+  loadAuth();
   try {
     if (localStorage.getItem('racikpos-collapsed')) document.getElementById('app').classList.add('collapsed');
   } catch (e) { /* abaikan */ }
   UI.cart = newCart();
-  const onHash = () => {
-    current = location.hash.slice(1) || 'dashboard';
+  window.addEventListener('hashchange', () => {
+    if (!currentUser()) return;
+    current = location.hash.slice(1) || firstAllowed();
     document.getElementById('app').classList.remove('nav-open');
     closeModal(true);
     render();
     window.scrollTo(0, 0);
-  };
-  window.addEventListener('hashchange', onHash);
-  paintChrome();
-  onHash();
+  });
+  if (currentUser()) enterApp(); else showLogin();
   // perbarui timer layar dapur tiap 30 detik
-  kdsTimer = setInterval(() => { if (current === 'dapur' && !modalEl()) render(); }, 30000);
+  kdsTimer = setInterval(() => { if (current === 'dapur' && currentUser() && !modalEl()) render(); }, 30000);
 }

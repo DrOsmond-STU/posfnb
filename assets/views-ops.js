@@ -189,7 +189,15 @@ ACT['cart-type'] = el => {
 };
 ACT['cart-table'] = el => { UI.cart.table = el.value ? +el.value : null; };
 ACT['cart-cust'] = el => { UI.cart.customer = el.value; };
-ACT['cart-disc'] = el => { UI.cart.discPct = +el.value; rerenderPOS(); };
+ACT['cart-disc'] = el => {
+  const v = +el.value;
+  if (v > 0 && !can('kasir.diskon')) {
+    el.value = UI.cart.discPct;
+    askDiscountApproval(v, u => { UI.cart.discPct = v; UI.cart.discBy = u.name; rerenderPOS(); toast(`Diskon ${v}% disetujui ${u.name}.`, 'shield'); });
+    return;
+  }
+  UI.cart.discPct = v; UI.cart.discBy = v ? currentUser().name : ''; rerenderPOS();
+};
 ACT['cart-clear'] = () => {
   if (UI.cart.billId) { UI.cart = newCart(); toast('Bill tetap tersimpan. Layar kasir dikosongkan.'); }
   else UI.cart = newCart();
@@ -333,7 +341,7 @@ ACT['pay-confirm'] = () => {
   let bill = c.billId ? S.bills.find(b => b.id === c.billId) : null;
   const kitchenBill = bill || { no: 'TA', type: c.type, table: c.table, customer: c.customer, items: c.items.map(i => ({ ...i, sent: 0 })) };
   if (bill) kitchenBill.items = c.items.map(i => ({ ...i }));
-  const sale = recordSale(now, { type: c.type, table: c.table, customer: c.customer, items: c.items, discPct: c.discPct },
+  const sale = recordSale(now, { type: c.type, table: c.table, customer: c.customer, items: c.items, discPct: c.discPct, discBy: c.discBy },
     { method: PAY.method, paid: PAY.method === 'tunai' ? PAY.paid : total, ref: PAY.ref });
   if (!bill) kitchenBill.no = sale.no;
   sendToKitchen(kitchenBill);
@@ -485,7 +493,8 @@ ACT['kds-next'] = el => {
 VIEWS.penjualan = () => {
   const f = UI.sales;
   const q = f.q.trim().toLowerCase();
-  const list = salesIn(range(f.period)).filter(s => (f.method === 'all' || s.method === f.method) && (f.type === 'all' || s.type === f.type) && (!q || s.no.toLowerCase().includes(q) || (s.customer || '').toLowerCase().includes(q))).reverse();
+  const mine = !can('penjualan.semua');
+  const list = salesIn(range(f.period)).filter(s => (!mine || s.cashier === currentUser().name) && (f.method === 'all' || s.method === f.method) && (f.type === 'all' || s.type === f.type) && (!q || s.no.toLowerCase().includes(q) || (s.customer || '').toLowerCase().includes(q))).reverse();
   const per = 25, pages = Math.max(1, Math.ceil(list.length / per));
   f.page = Math.min(f.page, pages - 1);
   const rows = list.slice(f.page * per, f.page * per + per);
@@ -498,6 +507,7 @@ VIEWS.penjualan = () => {
       <select class="input" style="width:auto" data-ch="sales-type" aria-label="Tipe">${opts([['all', 'Semua tipe'], ['dinein', 'Dine-in'], ['takeaway', 'Take away'], ['online', 'Online']], f.type)}</select>
     </div>
   </div>
+  ${mine ? `<div class="alert info">${icon('user', 16)}<div>Menampilkan transaksi yang Anda proses saja. Transaksi kasir lain hanya bisa dilihat manajer, akuntan, atau pemilik.</div></div>` : ''}
   <div class="strip">
     <div><div class="s-l">Transaksi</div><div class="s-v">${nf.format(list.length)}</div></div>
     <div><div class="s-l">Penjualan kotor</div><div class="s-v">${rp(sumBy(list, s => s.sub))}</div></div>

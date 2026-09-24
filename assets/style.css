@@ -574,3 +574,91 @@ table.tbl { width: 100%; border-collapse: collapse; }
   .matrix { grid-template-columns: minmax(0, 1fr); }
   .kpi .k-val { font-size: 21px; }
 }
+
+/* ---------- Autentikasi (mengikuti layar masuk KG SafeGuard) ---------- */
+.login { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 100%; }
+.login[hidden] { display: none; }
+.login-brandside {
+  position: sticky; top: 0; height: 100vh; overflow: hidden; color: var(--ink-on-brand);
+  background: linear-gradient(150deg, var(--grad-hero-from), var(--grad-hero-to));
+  padding: var(--space-8) var(--space-7); display: flex; flex-direction: column; gap: var(--space-7);
+}
+.login-brandtop { display: flex; align-items: center; gap: var(--space-3); }
+.login-claim { margin-top: auto; position: relative; z-index: 1; max-width: 32ch; }
+.login-metric { font-family: var(--font-mono); font-size: 52px; line-height: 58px; font-weight: 600; white-space: nowrap; }
+.login-claim h2 { font-family: var(--font-display); font-size: 26px; line-height: 32px; font-weight: 700; margin: var(--space-2) 0 var(--space-1); color: var(--ink-on-brand); text-wrap: balance; }
+.login-claim p { margin: 0; color: var(--brand-300); font-size: 14px; }
+.login-claim blockquote { margin: var(--space-6) 0 0; padding-left: var(--space-4); border-left: 3px solid var(--brand-400); color: var(--brand-300); font-size: 15px; line-height: 23px; }
+.login-pattern { position: absolute; right: -40px; top: var(--space-8); width: 320px; height: 140px; color: #fff; pointer-events: none; }
+.login-formside { display: flex; flex-direction: column; align-items: center; padding: var(--space-6) var(--space-6) var(--space-8); background: var(--surface-100); }
+.login-prefs { width: 100%; max-width: 440px; display: flex; justify-content: flex-end; margin-bottom: var(--space-6); }
+.theme-switch.on-light { background: var(--surface-200); }
+.theme-switch.on-light button { color: var(--ink-500); }
+.theme-switch.on-light button:hover { color: var(--ink-900); }
+.theme-switch.on-light button.on { background: var(--surface-000); color: var(--brand-700); box-shadow: var(--shadow-float-sm); }
+.login-card { width: 100%; max-width: 440px; margin: auto 0; background: var(--surface-000); border: 1px solid var(--border-100); border-radius: var(--radius-xl); box-shadow: var(--shadow-card); padding: var(--space-7); }
+.login-card h1 { font-family: var(--font-display); font-size: 24px; line-height: 30px; font-weight: 700; color: var(--ink-900); margin: 0; }
+.login-sub { font-size: 13px; color: var(--ink-500); margin: 4px 0 var(--space-5); }
+#login-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.login-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.check { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 13px; color: var(--ink-700); cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--brand-600); margin: 0; }
+.linkish { border: 0; background: none; padding: 0; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--brand-700); text-decoration: underline; }
+.login-error { display: flex; align-items: flex-start; gap: var(--space-2); background: var(--signal-critical-bg); color: var(--signal-critical); border-left: 3px solid currentColor; border-radius: var(--radius-sm); padding: var(--space-3); font-size: 13px; line-height: 19px; margin-top: var(--space-2); }
+.pass-wrap { position: relative; }
+.pass-wrap .input { padding-right: 44px; }
+.pass-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: none; cursor: pointer; color: var(--ink-500); width: 34px; height: 34px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; }
+.pass-eye:hover { background: var(--surface-200); color: var(--ink-900); }
+.login-demo { margin-top: var(--space-6); border-top: 1px solid var(--border-100); padding-top: var(--space-4); }
+.login-demo .lbl { font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-500); }
+.login-demo p { font-size: 12px; line-height: 18px; color: var(--ink-500); margin: 6px 0 var(--space-3); }
+code { font-family: var(--font-mono); font-size: 12px; color: var(--brand-700); background: var(--brand-050); padding: 1px 5px; border-radius: var(--radius-xs); }
+.demo-list { display: flex; flex-direction: column; gap: 6px; }
+.demo-acct, .pin-user { display: flex; align-items: center; gap: var(--space-3); width: 100%; cursor: pointer; text-align: left; background: var(--surface-000); border: 1px solid var(--border-100); border-radius: var(--radius-md); padding: 8px var(--space-3); box-shadow: var(--shadow-float-sm); min-height: 46px; }
+.demo-acct:hover, .pin-user:hover { border-color: var(--brand-400); background: var(--brand-050); }
+.demo-acct .av, .pin-user .av { width: 30px; height: 30px; border-radius: var(--radius-pill); flex: none; background: var(--brand-100); color: var(--brand-700); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.demo-acct .nm, .pin-user .nm { display: block; font-size: 13px; font-weight: 600; color: var(--ink-900); line-height: 17px; }
+.demo-acct .rl, .pin-user .rl { display: block; font-size: 11px; color: var(--ink-500); line-height: 15px; overflow: hidden; text-overflow: ellipsis; }
+.pin-users { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.pin-user.on { border-color: var(--brand-500); background: var(--brand-050); box-shadow: var(--shadow-float-md); }
+.pin-box { margin-top: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
+.pin-dots { display: flex; justify-content: center; gap: 12px; padding: 6px 0; }
+.pin-dots i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border-200); }
+.pin-dots i.on { background: var(--brand-600); border-color: var(--brand-600); }
+.pin-dots.shake { animation: shake .35s; }
+@keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+.pinpad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); max-width: 300px; margin: 0 auto; width: 100%; }
+.pinpad button { min-height: 54px; border-radius: var(--radius-md); border: 1px solid var(--border-100); background: var(--surface-000); box-shadow: var(--shadow-float-sm); font-family: var(--font-mono); font-size: 20px; font-weight: 600; color: var(--ink-900); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.pinpad button:hover { box-shadow: var(--shadow-float-md); }
+.pinpad button:active { box-shadow: var(--shadow-press); }
+.pinpad button.ok { background: linear-gradient(180deg, var(--grad-action-from), var(--grad-action-to)); color: var(--ink-on-brand); border-color: transparent; }
+
+/* pengguna di bilah sisi */
+.side-prefs { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.side-me { display: flex; align-items: center; gap: var(--space-3); flex: 1; min-width: 0; border: 0; background: none; padding: 4px; margin: -4px; border-radius: var(--radius-md); cursor: pointer; text-align: left; color: inherit; }
+.side-me:hover { background: rgba(255, 255, 255, .09); }
+.side-btn { flex: none; border: 0; cursor: pointer; width: 34px; height: 34px; border-radius: var(--radius-md); background: rgba(255, 255, 255, .12); color: var(--brand-300); display: flex; align-items: center; justify-content: center; }
+.side-btn:hover { background: rgba(255, 255, 255, .22); color: var(--ink-on-brand); }
+.side-user .u-name, .side-user .u-role { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app.collapsed .side-prefs { flex-direction: column; }
+.app.collapsed .side-me { flex: none; }
+
+/* kontrol yang tidak diizinkan */
+.locked { cursor: not-allowed !important; }
+.btn.locked, .chip.locked, .pm.locked { opacity: var(--opacity-disabled); box-shadow: none; }
+.perm-matrix td, .perm-matrix th { padding-block: 9px; }
+.perm-cb { width: 18px; height: 18px; accent-color: var(--brand-600); cursor: pointer; margin: 0; }
+.perm-cb:disabled { cursor: not-allowed; }
+
+@media (max-width: 900px) {
+  .login { grid-template-columns: minmax(0, 1fr); }
+  .login-brandside { position: relative; height: auto; padding: calc(var(--space-6) + env(safe-area-inset-top, 0px)) var(--space-4) var(--space-6); gap: var(--space-5); }
+  .login-claim { margin-top: 0; max-width: none; }
+  .login-metric { font-size: 38px; line-height: 44px; }
+  .login-claim h2 { font-size: 20px; line-height: 26px; }
+  .login-claim blockquote, .login-pattern { display: none; }
+  .login-formside { padding: var(--space-5) var(--space-4) var(--space-8); }
+  .login-prefs { margin-bottom: var(--space-4); }
+  .login-card { padding: var(--space-5); }
+}
+@media (max-width: 420px) { .pin-users { grid-template-columns: minmax(0, 1fr); } }

@@ -360,10 +360,10 @@ VIEWS.pengaturan = () => {
   </div>
   <div class="row" style="justify-content:flex-end"><button class="btn btn-primary" data-act="st-save">${icon('save', 16)} Simpan pengaturan</button></div>
   <div class="grid g-2" style="align-items:start">
-    <div class="card"><div class="card-h"><h3>Pengguna &amp; hak akses</h3><div class="right"><button class="btn btn-sm" data-act="user-add">${icon('plus', 14)} Undang pengguna</button></div></div>
-      <div class="table-wrap"><table class="tbl"><thead><tr><th>Nama</th><th>Peran</th><th>Akses modul</th><th>Status</th></tr></thead><tbody>
-      ${USERS.map(u => `<tr><td class="strong">${esc(u.name)}</td><td>${esc(u.role)}</td><td class="muted">${esc(u.access)}</td><td>${u.status === 'Aktif' ? '<span class="pill ok">Aktif</span>' : '<span class="pill">Nonaktif</span>'}</td></tr>`).join('')}
-      </tbody></table></div></div>
+    <div class="card"><div class="card-h"><h3>Pengguna &amp; hak akses</h3></div><div class="card-b stack">
+      <div class="muted">${activeUsers().length} pengguna aktif dalam ${AUTH.roles.length} peran. Akun, PIN kasir, matriks izin, dan log aktivitas dikelola di menu tersendiri.</div>
+      <div class="row">${AUTH.roles.map(r => rolePill(r.id)).join('')}</div>
+      <div><button class="btn" data-act="go" data-to="pengguna">${icon('shield', 16)} Buka Pengguna &amp; Akses</button></div></div></div>
     <div class="stack">
       <div class="card"><div class="card-h"><h3>Metode pembayaran</h3></div><div>
         ${PAY_METHODS.map(p => `<div class="li">${icon(p.icon, 18)}<div class="grow"><div class="t">${p.name}</div><div class="s">Masuk ke akun ${p.acc} ${esc(accName(p.acc))}</div></div><label class="switch"><input type="checkbox" checked aria-label="Aktifkan ${p.name}"></label></div>`).join('')}</div></div>
@@ -387,7 +387,6 @@ ACT['st-save'] = () => {
   });
   refresh(); paintChrome(); toast('Pengaturan disimpan.');
 };
-ACT['user-add'] = () => toast('Undangan pengguna dikirim lewat email (simulasi).', 'send');
 ACT['reset-ask'] = () => openModal({ title: 'Atur ulang data demo?', size: 'sm',
   body: '<div>Semua transaksi, PO, dan perubahan resep yang Anda buat di purwarupa ini akan dihapus dan diganti data demo baru.</div>',
   foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="reset-do">${icon('refresh-cw', 16)} Atur ulang</button>` });
@@ -404,13 +403,17 @@ VIEWS.dashboard.hero = () => {
     title: 'Halo, ' + S.session.manager.split(' ')[0],
     desc: fmtDay(Date.now()) + '. Ringkasan penjualan, stok, dan operasional ' + S.settings.outlet + ' hari ini.',
     metric: rpShort(net), label: 'Penjualan bersih hari ini',
-    actions: `<button class="btn btn-onhero" data-act="go" data-to="lap-penjualan">${icon('chart-column', 16)} Laporan</button><button class="btn btn-hero" data-act="go" data-to="kasir">${icon('shopping-cart', 16)} Buka Kasir</button>`,
+    actions: (canView('lap-penjualan') ? `<button class="btn btn-onhero" data-act="go" data-to="lap-penjualan">${icon('chart-column', 16)} Laporan</button>` : '') + (canView('kasir') ? `<button class="btn btn-hero" data-act="go" data-to="kasir">${icon('shopping-cart', 16)} Buka Kasir</button>` : ''),
   };
 };
 VIEWS.kasir.hero = () => ({ metric: nf.format(salesIn(range('today')).length), label: 'Struk hari ini' });
 VIEWS.meja.hero = () => ({ metric: S.tables.filter(t => t.status === 'terisi').length + '/' + S.tables.length, label: 'Meja terisi' });
 VIEWS.dapur.hero = () => ({ metric: S.kds.filter(k => k.status !== 'selesai').length, label: 'Tiket aktif' });
-VIEWS.penjualan.hero = () => ({ metric: rpShort(sumBy(salesIn(range('today')), s => s.total)), label: 'Diterima hari ini' });
+VIEWS.penjualan.hero = () => {
+  const mine = !can('penjualan.semua');
+  const list = salesIn(range('today')).filter(s => !mine || s.cashier === currentUser().name);
+  return { metric: rpShort(sumBy(list, s => s.total)), label: mine ? 'Diterima oleh Anda hari ini' : 'Diterima hari ini' };
+};
 VIEWS.menu.hero = () => {
   const act = S.menu.filter(m => m.active);
   return { metric: pct(sumBy(act, m => recipeCost(m) / m.price * 100) / (act.length || 1)), label: 'Rata-rata food cost' };

@@ -49,6 +49,7 @@ function menuDetailHTML() {
     <button class="btn btn-ghost" data-act="menu-back">${icon('chevron-left', 16)} Semua menu</button>
     <div class="row"><button class="btn" data-act="menu-back">Batal</button><button class="btn btn-primary" data-act="menu-save">${icon('save', 16)} Simpan standar menu</button></div>
   </div>
+  ${can('menu.edit') ? '' : `<div class="alert info">${icon('eye', 16)}<div><b>Mode lihat saja.</b> Peran Anda bisa membaca standar resep tetapi tidak bisa mengubah takaran atau harga.</div></div>`}
   <div class="card card-b">
     <div class="recipe-head">
       <div class="recipe-img m-img c-${m.cat}" style="display:grid">${icon(m.icon || CAT_ICONS[m.cat], 48)}</div>
@@ -324,7 +325,7 @@ ACT['po-recv'] = el => {
       ${p.lines.map((l, i) => { const ing = ingById(l.ing); const rem = Math.max(0, l.qty - l.recv); return `<tr><td class="strong">${esc(ing.name)}<div class="sub">${ing.buy} = ${nf.format(ing.conv)} ${ing.unit}</div></td><td class="num">${fmtBuy(ing, l.qty)}</td><td class="num">${fmtBuy(ing, l.recv)}</td>
         <td><input class="input sm num grn-q" data-i="${i}" inputmode="decimal" value="${rem}" aria-label="Jumlah diterima"></td><td><input class="input sm num grn-p" data-i="${i}" inputmode="numeric" value="${l.price}" aria-label="Harga aktual"></td></tr>`; }).join('')}
       </tbody></table></div>
-      <div class="form-grid"><div class="field"><label for="grn-by">Diterima oleh</label><select class="input" id="grn-by">${opts(USERS.map(u => [u.name, u.name + ' · ' + u.role]), 'Joko Susilo')}</select></div>
+      <div class="form-grid"><div class="field"><label for="grn-by">Diterima oleh</label><select class="input" id="grn-by">${opts(activeUsers().map(u => [u.name, u.name + ' · ' + roleById(u.role).name]), currentUser().name)}</select></div>
       <div class="field"><label for="grn-sj">No. surat jalan pemasok</label><input class="input" id="grn-sj" placeholder="mis. SJ-0925/118"></div></div>`,
     foot: `<button class="btn" data-act="po-view" data-no="${esc(p.no)}">Kembali</button><button class="btn btn-primary" data-act="grn-post" data-no="${esc(p.no)}">${icon('package-check', 16)} Posting penerimaan</button>`,
   });
@@ -471,7 +472,7 @@ ACT['opn-new'] = () => {
         <td><input class="input sm num opn-in" data-id="${i.id}" inputmode="decimal" value="${String(Math.round(i.stock * 100) / 100).replace('.', ',')}" data-in="opn-row" aria-label="Stok fisik ${esc(i.name)}"></td>
         <td class="num" id="od-${i.id}"><span class="faint">0</span></td><td class="num" id="ov-${i.id}"><span class="faint">—</span></td></tr>`).join('')}
       </tbody></table></div>
-      <div class="form-grid"><div class="field"><label for="opn-by">Petugas</label><select class="input" id="opn-by">${opts(USERS.map(u => [u.name, u.name]), 'Joko Susilo')}</select></div>
+      <div class="form-grid"><div class="field"><label for="opn-by">Petugas</label><select class="input" id="opn-by">${opts(activeUsers().map(u => [u.name, u.name]), currentUser().name)}</select></div>
       <div class="field"><label for="opn-note">Catatan</label><input class="input" id="opn-note" placeholder="mis. Opname akhir bulan"></div></div>
       <div class="row between"><span class="muted">Total nilai selisih</span><span id="opn-total" style="font-weight:800;font-size:18px">Rp 0</span></div>`,
     foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="opn-post">${icon('check', 16)} Posting penyesuaian</button>`,
@@ -518,6 +519,6 @@ ACT['ws-save'] = () => {
   const i = ingById(id);
   if (q <= 0) { toast('Isi jumlah bahan rusak.', 'triangle-alert'); return; }
   if (q > i.stock) { toast('Jumlah melebihi stok sistem (' + fmtQty(i, i.stock) + ').', 'triangle-alert'); return; }
-  recordWaste(Date.now(), id, q, document.getElementById('ws-reason').value, S.session.manager);
+  recordWaste(Date.now(), id, q, document.getElementById('ws-reason').value, currentUser().name);
   closeModal(true); refresh(); toast(`Bahan rusak ${i.name} ${fmtQty(i, q)} dicatat.`, 'trash-2');
 };

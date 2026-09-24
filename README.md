@@ -32,6 +32,36 @@ Bisa juga langsung membuka `index.html` di browser.
 | | **Laporan Persediaan** | Mutasi per bahan (awal, beli, pakai, waste, opname, akhir), hari persediaan, rekonsiliasi ke akun persediaan |
 | Sistem | **Pengaturan** | Profil outlet & struk, PB1 & service charge, target food cost, pengguna & hak akses, perangkat, reset data demo |
 
+## Masuk & hak akses
+
+Aplikasi dibuka dengan layar masuk. Ada dua cara masuk: **email + kata sandi**, atau **PIN kasir 6 digit** dengan papan angka untuk berganti kasir dengan cepat. Semua akun demo memakai kata sandi `demo1234`.
+
+| Peran | Akun demo | PIN | Modul |
+|---|---|---|---|
+| Pemilik | andi@dapurnusantara.id | 111111 | Semua, termasuk Pengguna & Akses |
+| Manajer Outlet | sari@dapurnusantara.id | 222222 | Semua kecuali Pengguna & Akses; bisa menyetujui diskon |
+| Kasir | rina@ / dimas@dapurnusantara.id | 123456 / 654321 | Kasir, Meja, Layar Dapur, riwayat transaksi sendiri |
+| Kepala Dapur | wayan@dapurnusantara.id | 333333 | Layar Dapur, Resep, Persediaan (opname & waste) |
+| Staf Gudang | joko@dapurnusantara.id | 444444 | Pembelian, Pemasok, Persediaan |
+| Akuntan | maya@dapurnusantara.id | — | Dasbor, Kas & Biaya, semua laporan, bayar pemasok |
+| (nonaktif) | budi@dapurnusantara.id | — | Tidak bisa masuk |
+
+- **Menu mengikuti peran:** bilah sisi hanya menampilkan modul yang diizinkan. Membuka URL modul lain menampilkan halaman "tidak punya akses", dan tombol aksi yang tidak diizinkan tampil terkunci.
+- **Diskon butuh persetujuan:** kasir yang memilih diskon harus meminta PIN Manajer atau Pemilik. Nama penyetujunya tercatat di transaksi.
+- **Pengguna & Akses** (khusus Pemilik) berisi:
+  - daftar pengguna: tambah, ubah peran, atur ulang kata sandi & PIN, aktif/nonaktif;
+  - matriks hak akses per peran, yang bisa dicentang langsung;
+  - log aktivitas: masuk, gagal masuk, akses ditolak, persetujuan diskon, perubahan hak akses.
+- **Keamanan dasar:**
+  - kata sandi & PIN disimpan sebagai hash SHA-256 bergaram;
+  - 5 kali gagal akan mengunci akun selama 60 detik;
+  - sesi terkunci otomatis setelah 30 menit tidak aktif;
+  - "Ingat saya" menjaga sesi 7 hari (tanpa centang, sesi berakhir saat tab ditutup);
+  - tombol **Kunci layar** untuk berganti kasir;
+  - hanya Pemilik yang bisa menunjuk Pemilik lain, dan minimal satu Pemilik harus tetap aktif.
+
+> Ini autentikasi purwarupa di sisi peramban. Siapa pun yang membuka DevTools bisa melewatinya. Untuk produksi, verifikasi kata sandi, sesi, dan pengecekan izin wajib dijalankan di server (mis. PHP/Laravel + MySQL di hosting yang sama).
+
 ## Alur data yang saling terhubung
 
 - **Penjualan**: stok bahan berkurang sesuai resep. Jurnal: Kas/Bank (D), Diskon (D), Penjualan (K), Service (K), Hutang PB1 (K), serta HPP (D) dan Persediaan (K).
@@ -47,6 +77,7 @@ assets/style.css         tema & komponen (token warna di :root)
 assets/icons.js          ikon Lucide (ISC) yang dibundel lokal
 assets/data.js           master data, mesin transaksi & akuntansi, simulasi 30 hari
 assets/ui.js             router, modal, toast, format Rupiah, grafik SVG
+assets/auth.js           layar masuk, sesi, peran & izin, Pengguna & Akses, log aktivitas
 assets/views-ops.js      Dasbor, Kasir, Meja, Layar Dapur, Riwayat Penjualan
 assets/views-stock.js    Resep, Pemasok, Pembelian, Persediaan
 assets/views-finance.js  Kas & Biaya, Laporan, Pengaturan

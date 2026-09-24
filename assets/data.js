@@ -172,14 +172,6 @@ const PAY_METHODS = [
 ];
 const payName = id => (PAY_METHODS.find(p => p.id === id) || {}).name || id;
 
-const USERS = [
-  { name: 'Andi Pratama', role: 'Pemilik / Manajer', access: 'Semua modul', status: 'Aktif' },
-  { name: 'Rina Kartika', role: 'Kasir', access: 'Kasir, Meja, Riwayat Penjualan', status: 'Aktif' },
-  { name: 'Dimas Saputra', role: 'Kasir', access: 'Kasir, Meja, Riwayat Penjualan', status: 'Aktif' },
-  { name: 'Chef Wayan', role: 'Kepala Dapur', access: 'Layar Dapur, Resep, Waste, Opname', status: 'Aktif' },
-  { name: 'Joko Susilo', role: 'Staf Gudang', access: 'Pembelian, Penerimaan, Persediaan', status: 'Aktif' },
-  { name: 'Maya Lestari', role: 'Akuntan', access: 'Kas & Biaya, Laporan', status: 'Nonaktif' },
-];
 
 /* ---------- Util angka acak deterministik ---------- */
 function mulberry32(a) {
@@ -319,7 +311,7 @@ function recordSale(t, bill, pay, opts = {}) {
     no, t, type: bill.type, table: bill.table || null, customer: bill.customer || '',
     items: lines, discPct: bill.discPct || 0, ...c, cogs: Math.round(cogs),
     method: pay.method, paid: pay.paid || c.total, change: Math.max(0, (pay.paid || c.total) - c.total),
-    payRef: pay.ref || '', cashier: opts.cashier || S.session.cashier,
+    payRef: pay.ref || '', cashier: opts.cashier || S.session.cashier, discBy: bill.discBy || '',
   };
   S.sales.push(sale);
   if (!opts.skipJournal) journalSale(t, no, `Penjualan ${no}`, [sale]);
