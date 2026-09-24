@@ -2,7 +2,9 @@
    Racik POS — Operasional: Dasbor, Kasir, Meja, Layar Dapur, Riwayat Penjualan
    ========================================================================= */
 
-const salesIn = r => S.sales.filter(s => inRange(s.t, r));
+/* laporan hanya menghitung transaksi yang tidak di-void */
+const salesIn = r => S.sales.filter(s => s.status !== 'void' && inRange(s.t, r));
+const salesAllIn = r => S.sales.filter(s => inRange(s.t, r));
 const sumBy = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
 
 /* =========================== DASBOR =========================== */
@@ -87,9 +89,8 @@ ACT['buy-tab-go'] = el => { UI.buy.tab = el.dataset.v; go('pembelian'); };
 /* =========================== KASIR =========================== */
 function cartQty(mid) { return UI.cart.items.filter(i => i.mid === mid).reduce((s, i) => s + i.qty, 0); }
 function menuCard(m) {
-  const avail = portionsAvailable(m);
   const inCart = cartQty(m.id);
-  const left = avail - inCart;
+  const left = portionsLeft(m, UI.cart.items);
   const out = left <= 0;
   return `<button type="button" class="mcard ${out ? 'out' : ''}" data-act="pos-add" data-id="${m.id}" ${out ? 'aria-disabled="true"' : ''}>
     <div class="m-img c-${m.cat}">${icon(m.icon || CAT_ICONS[m.cat], 30)}${inCart ? `<span class="m-qty">${inCart}</span>` : ''}</div>
@@ -111,7 +112,8 @@ function orderPanelHTML() {
     <div class="row between">
       <div><div style="font-weight:800;font-size:15px">${bill ? 'Bill ' + esc(bill.no) : 'Pesanan baru'}</div><div class="faint" style="font-size:12px">Kasir: ${esc(S.session.cashier)} · ${fmtTime(Date.now())}</div></div>
       <div class="row" style="gap:6px"><button class="btn btn-sm" data-act="bills-open">${icon('clipboard-list', 14)} Bill tersimpan <span class="pill brand no-dot">${S.bills.length}</span></button>
-      <button class="btn btn-sm btn-ghost" data-act="cart-clear" title="Kosongkan">${icon('trash-2', 15)}</button></div>
+      ${bill ? `<button class="btn btn-sm btn-ghost btn-danger" data-act="bill-cancel" title="Batalkan bill">${icon('ban', 15)}</button>` : ''}
+      <button class="btn btn-sm btn-ghost" data-act="cart-clear" title="Kosongkan layar">${icon('trash-2', 15)}</button></div>
     </div>
     <div class="seg" style="width:100%">${[['dinein', 'Dine-in', 'armchair'], ['takeaway', 'Take away', 'package'], ['online', 'Online', 'smartphone']].map(([k, l, ic]) =>
       `<button type="button" style="flex:1;justify-content:center" class="${c.type === k ? 'on' : ''}" data-act="cart-type" data-v="${k}">${icon(ic, 14)} ${l}</button>`).join('')}</div>
@@ -161,14 +163,14 @@ ACT['pos-cat'] = el => { UI.pos.cat = el.dataset.v; render(); };
 ACT['pos-q'] = el => { UI.pos.q = el.value; document.getElementById('menu-grid').innerHTML = menuGridHTML(); };
 ACT['pos-add'] = el => {
   const m = menuById(el.dataset.id);
-  if (portionsAvailable(m) - cartQty(m.id) <= 0) { toast('Bahan untuk ' + m.name + ' tidak cukup. Cek persediaan.', 'triangle-alert'); return; }
+  if (portionsLeft(m, UI.cart.items) <= 0) { toast('Bahan untuk ' + m.name + ' tidak cukup. Cek persediaan.', 'triangle-alert'); return; }
   const ex = UI.cart.items.find(i => i.mid === m.id && !i.note);
   if (ex) ex.qty++; else UI.cart.items.push({ mid: m.id, qty: 1, note: '', sent: 0 });
   rerenderPOS();
 };
 ACT['cart-inc'] = el => {
   const it = UI.cart.items[+el.dataset.i], m = menuById(it.mid);
-  if (portionsAvailable(m) - cartQty(m.id) <= 0) { toast('Bahan tidak cukup untuk menambah porsi.', 'triangle-alert'); return; }
+  if (portionsLeft(m, UI.cart.items) <= 0) { toast('Bahan tidak cukup untuk menambah porsi.', 'triangle-alert'); return; }
   it.qty++; rerenderPOS();
 };
 ACT['cart-dec'] = el => {
@@ -244,6 +246,31 @@ ACT['cart-hold'] = () => {
   UI.cart = newCart();
   refresh();
   toast(`Bill ${bill.no} disimpan${n ? ' · ' + n + ' item dikirim ke dapur' : ''}.`, 'send');
+};
+/* batalkan bill terbuka: bila ada item yang sudah dikirim ke dapur, perlu izin void / PIN penyetuju */
+ACT['bill-cancel'] = () => {
+  const bill = S.bills.find(b => b.id === UI.cart.billId); if (!bill) return;
+  const sent = bill.items.some(i => i.sent > 0);
+  openModal({ title: 'Batalkan bill ' + esc(bill.no), size: 'sm',
+    body: `<div>${bill.table ? 'Meja ' + bill.table + ' akan dikosongkan. ' : ''}Bill dihapus dari daftar tersimpan dan tiket dapur yang belum selesai ikut dibatalkan. Stok tidak berubah karena bill belum dibayar.</div>
+      ${sent ? `<div class="alert">${icon('triangle-alert', 16)}<div>Sebagian item sudah dikirim ke dapur. Bila bahan sudah terpakai, catat sebagai bahan rusak.</div></div>` : ''}
+      <div class="field"><label for="bc-reason">Alasan</label><input class="input" id="bc-reason" placeholder="mis. Tamu batal pesan" autofocus></div>`,
+    foot: `<button class="btn" data-act="modal-close">Kembali</button><button class="btn btn-primary" data-act="bill-cancel-ok">${icon('ban', 16)} Batalkan bill</button>` });
+};
+ACT['bill-cancel-ok'] = () => {
+  const bill = S.bills.find(b => b.id === UI.cart.billId);
+  const reason = document.getElementById('bc-reason').value.trim();
+  if (!reason) { toast('Isi alasan pembatalan.', 'triangle-alert'); return; }
+  const doCancel = u => {
+    S.bills = S.bills.filter(b => b !== bill);
+    S.tables.forEach(t => { if (t.bill === bill.id) { t.status = 'kosong'; t.bill = null; } });
+    S.kds = S.kds.filter(k => k.billNo !== bill.no);
+    audit('Bill dibatalkan', `${bill.no}: ${reason}${u.id !== currentUser().id ? ' · disetujui ' + u.name : ''}`);
+    UI.cart = newCart(); closeModal(true); refresh(); paintChrome();
+    toast(`Bill ${bill.no} dibatalkan.`, 'ban');
+  };
+  if (bill.items.some(i => i.sent > 0)) withApproval('penjualan.void', 'Persetujuan batal bill', 'Item bill ini sudah dikirim ke dapur.', doCancel);
+  else doCancel(currentUser());
 };
 ACT['bills-open'] = () => {
   openModal({
@@ -333,10 +360,8 @@ ACT['pay-confirm'] = () => {
   const c = UI.cart;
   const total = calcBill(c.items, c.type, c.discPct).total;
   if (PAY.method === 'tunai' && PAY.paid < total) { toast('Uang diterima kurang dari total tagihan.', 'triangle-alert'); return; }
-  for (const it of c.items) {
-    const m = menuById(it.mid);
-    if (portionsAvailable(m) < cartQty(m.id)) { toast('Stok bahan ' + m.name + ' tidak cukup.', 'triangle-alert'); return; }
-  }
+  const short = stockShortage(c.items);
+  if (short) { toast(`Stok ${short.ing.name} tidak cukup: perlu ${fmtQty(short.ing, short.need)}, tersedia ${fmtQty(short.ing, short.have)}.`, 'triangle-alert'); return; }
   const now = Date.now();
   let bill = c.billId ? S.bills.find(b => b.id === c.billId) : null;
   const kitchenBill = bill || { no: 'TA', type: c.type, table: c.table, customer: c.customer, items: c.items.map(i => ({ ...i, sent: 0 })) };
@@ -379,12 +404,15 @@ function receiptHTML(s) {
   </div>`;
 }
 function showReceipt(s, fresh) {
+  const isVoid = s.status === 'void';
   openModal({
     title: fresh ? 'Pembayaran berhasil' : 'Detail transaksi ' + esc(s.no), size: 'sm',
     body: `${fresh ? `<div class="change"><span>${s.change ? 'Kembalian' : 'Lunas'}</span><span>${rp(s.change || s.total)}</span></div>` : ''}
+      ${isVoid ? `<div class="alert bad">${icon('ban', 16)}<div><b>Transaksi di-void</b> (${esc(s.voidNo)}) oleh ${esc(s.voidBy)} pada ${fmtDT(s.voidAt)}. Alasan: ${esc(s.voidReason)}. Stok dan jurnal sudah dibalik.</div></div>` : ''}
+      ${s.discBy ? `<div class="muted" style="font-size:12px">Diskon ${s.discPct}% disetujui ${esc(s.discBy)}</div>` : ''}
       <div style="background:var(--surface-3);padding:16px;border-radius:10px">${receiptHTML(s)}</div>
       <div class="muted" style="font-size:12px">HPP transaksi ini ${rp(s.cogs)} · food cost ${pct(s.net ? s.cogs / s.net * 100 : 0)}</div>`,
-    foot: `<button class="btn" data-act="receipt-print">${icon('printer', 16)} Cetak struk</button>${fresh ? `<button class="btn btn-primary" data-act="modal-close">${icon('plus', 16)} Transaksi baru</button>` : `<button class="btn btn-primary" data-act="modal-close">Tutup</button>`}`,
+    foot: `${!fresh && !isVoid && canView('penjualan') ? `<button class="btn btn-danger" data-act="sale-void" data-no="${esc(s.no)}">${icon('ban', 16)} Void</button><span class="spacer"></span>` : ''}<button class="btn" data-act="receipt-print">${icon('printer', 16)} Cetak struk</button>${fresh ? `<button class="btn btn-primary" data-act="modal-close">${icon('plus', 16)} Transaksi baru</button>` : `<button class="btn btn-primary" data-act="modal-close">Tutup</button>`}`,
   });
 }
 ACT['receipt-print'] = () => toast('Struk dikirim ke printer kasir (simulasi).', 'printer');
@@ -406,7 +434,8 @@ VIEWS.meja = () => {
   </div>
   <div class="row between">
     <div class="chips">${areas.map(a => `<button type="button" class="chip ${UI.meja.area === a ? 'on' : ''}" data-act="meja-area" data-v="${a}">${a}</button>`).join('')}</div>
-    <div class="legend"><span><i style="background:var(--line-strong)"></i>Kosong</span><span><i style="background:var(--brand)"></i>Terisi</span><span><i style="background:var(--gold)"></i>Reservasi</span></div>
+    <div class="row"><button class="btn btn-sm" data-act="resv-new">${icon('calendar', 14)} Tambah reservasi</button>
+    <div class="legend"><span><i style="background:var(--line-strong)"></i>Kosong</span><span><i style="background:var(--brand)"></i>Terisi</span><span><i style="background:var(--gold)"></i>Reservasi</span></div></div>
   </div>
   <div class="tables">${list.map(t => {
     let info = '<span class="faint">Ketuk untuk buka bill</span>', st = '';
@@ -428,6 +457,24 @@ VIEWS.meja = () => {
   </div>`;
 };
 ACT['meja-area'] = el => { UI.meja.area = el.dataset.v; render(); };
+ACT['resv-new'] = () => {
+  const free = S.tables.filter(t => t.status === 'kosong');
+  if (!free.length) { toast('Tidak ada meja kosong untuk direservasi.', 'triangle-alert'); return; }
+  openModal({ title: 'Tambah reservasi', size: 'sm',
+    body: `<div class="field"><label for="rv-name">Atas nama</label><input class="input" id="rv-name" autofocus></div>
+      <div class="form-grid"><div class="field"><label for="rv-time">Jam</label><input class="input" id="rv-time" type="time" value="19:00"></div>
+      <div class="field"><label for="rv-pax">Jumlah tamu</label><input class="input num" id="rv-pax" inputmode="numeric" value="2"></div></div>
+      <div class="field"><label for="rv-table">Meja</label><select class="input" id="rv-table">${opts(free.map(t => [t.no, `Meja ${t.no} · ${t.area} · ${t.seats} kursi`]), free[0].no)}</select></div>`,
+    foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="resv-save">${icon('save', 16)} Simpan reservasi</button>` });
+};
+ACT['resv-save'] = () => {
+  const name = document.getElementById('rv-name').value.trim(), time = document.getElementById('rv-time').value;
+  const pax = +document.getElementById('rv-pax').value || 0, t = S.tables.find(x => x.no === +document.getElementById('rv-table').value);
+  if (!name || !time || pax <= 0) { toast('Isi nama, jam, dan jumlah tamu.', 'triangle-alert'); return; }
+  if (pax > t.seats) { toast(`Meja ${t.no} hanya ${t.seats} kursi.`, 'triangle-alert'); return; }
+  t.status = 'reservasi'; t.resv = { name, time, pax };
+  closeModal(true); refresh(); toast(`Reservasi ${name} di meja ${t.no} pukul ${time} disimpan.`, 'calendar');
+};
 ACT['new-ta'] = () => { UI.cart = newCart(); UI.cart.type = 'takeaway'; go('kasir'); };
 ACT['table-open'] = el => {
   const t = S.tables.find(x => x.no === +el.dataset.no);
@@ -494,10 +541,12 @@ VIEWS.penjualan = () => {
   const f = UI.sales;
   const q = f.q.trim().toLowerCase();
   const mine = !can('penjualan.semua');
-  const list = salesIn(range(f.period)).filter(s => (!mine || s.cashier === currentUser().name) && (f.method === 'all' || s.method === f.method) && (f.type === 'all' || s.type === f.type) && (!q || s.no.toLowerCase().includes(q) || (s.customer || '').toLowerCase().includes(q))).reverse();
-  const per = 25, pages = Math.max(1, Math.ceil(list.length / per));
+  const all = salesAllIn(range(f.period)).filter(s => (!mine || s.cashier === currentUser().name) && (f.method === 'all' || s.method === f.method) && (f.type === 'all' || s.type === f.type) && (!q || s.no.toLowerCase().includes(q) || (s.customer || '').toLowerCase().includes(q))).reverse();
+  const list = all.filter(s => s.status !== 'void');
+  const voids = all.length - list.length;
+  const per = 25, pages = Math.max(1, Math.ceil(all.length / per));
   f.page = Math.min(f.page, pages - 1);
-  const rows = list.slice(f.page * per, f.page * per + per);
+  const rows = all.slice(f.page * per, f.page * per + per);
   return `
   <div class="row between">
     ${periodSeg(f.period, 'sales-period', ['today', 'yesterday', '7d', '30d'])}
@@ -509,7 +558,7 @@ VIEWS.penjualan = () => {
   </div>
   ${mine ? `<div class="alert info">${icon('user', 16)}<div>Menampilkan transaksi yang Anda proses saja. Transaksi kasir lain hanya bisa dilihat manajer, akuntan, atau pemilik.</div></div>` : ''}
   <div class="strip">
-    <div><div class="s-l">Transaksi</div><div class="s-v">${nf.format(list.length)}</div></div>
+    <div><div class="s-l">Transaksi sah</div><div class="s-v">${nf.format(list.length)}${voids ? ` <span class="faint" style="font-size:12px">+${voids} void</span>` : ''}</div></div>
     <div><div class="s-l">Penjualan kotor</div><div class="s-v">${rp(sumBy(list, s => s.sub))}</div></div>
     <div><div class="s-l">Diskon</div><div class="s-v">${rp(sumBy(list, s => s.disc))}</div></div>
     <div><div class="s-l">Service + PB1</div><div class="s-v">${rp(sumBy(list, s => s.svc + s.tax))}</div></div>
@@ -517,7 +566,7 @@ VIEWS.penjualan = () => {
   </div>
   <div class="card">
     <div class="table-wrap"><table class="tbl"><thead><tr><th>No. invoice</th><th>Waktu</th><th>Tipe</th><th>Kasir</th><th class="num">Item</th><th>Metode</th><th class="num">Total</th><th class="num">HPP</th><th></th></tr></thead><tbody>
-    ${rows.map(s => `<tr class="click" data-act="sale-view" data-no="${esc(s.no)}"><td class="mono">${esc(s.no)}</td><td>${fmtDT(s.t)}</td><td>${TYPE_LABEL[s.type]}${s.table ? ` <span class="faint">· M${s.table}</span>` : ''}</td><td>${esc(s.cashier)}</td><td class="num">${s.items.reduce((a, l) => a + l.qty, 0)}</td><td>${esc(payName(s.method))}</td><td class="num strong">${rp(s.total)}</td><td class="num muted">${rp(s.cogs)}</td><td>${icon('chevron-right', 16)}</td></tr>`).join('') || `<tr><td colspan="9">${emptyState('receipt', 'Tidak ada transaksi pada filter ini.')}</td></tr>`}
+    ${rows.map(s => `<tr class="click" data-act="sale-view" data-no="${esc(s.no)}"><td class="mono">${esc(s.no)}</td><td>${fmtDT(s.t)}</td><td>${TYPE_LABEL[s.type]}${s.table ? ` <span class="faint">· M${s.table}</span>` : ''}</td><td>${esc(s.cashier)}</td><td class="num">${s.items.reduce((a, l) => a + l.qty, 0)}</td><td>${esc(payName(s.method))}</td><td class="num strong" ${s.status === 'void' ? 'style="text-decoration:line-through;color:var(--ink-400)"' : ''}>${rp(s.total)}</td><td class="num muted">${s.status === 'void' ? '<span class="pill bad">Void</span>' : rp(s.cogs)}</td><td>${icon('chevron-right', 16)}</td></tr>`).join('') || `<tr><td colspan="9">${emptyState('receipt', 'Tidak ada transaksi pada filter ini.')}</td></tr>`}
     </tbody></table></div>
     <div class="card-h" style="border-top:1px solid var(--line);border-bottom:0"><span class="sub">Halaman ${f.page + 1} dari ${pages}</span><div class="right"><button class="btn btn-sm" data-act="sales-page" data-v="-1" ${f.page === 0 ? 'disabled' : ''}>${icon('chevron-left', 14)} Sebelumnya</button><button class="btn btn-sm" data-act="sales-page" data-v="1" ${f.page >= pages - 1 ? 'disabled' : ''}>Berikutnya ${icon('chevron-right', 14)}</button></div></div>
   </div>`;
@@ -528,3 +577,22 @@ ACT['sales-type'] = el => { UI.sales.type = el.value; UI.sales.page = 0; render(
 ACT['sales-q'] = el => { UI.sales.q = el.value; UI.sales.page = 0; render(); };
 ACT['sales-page'] = el => { UI.sales.page += +el.dataset.v; render(); };
 ACT['sale-view'] = el => showReceipt(S.sales.find(s => s.no === el.dataset.no));
+ACT['sale-void'] = el => {
+  const sale = S.sales.find(s => s.no === el.dataset.no);
+  openModal({ title: 'Void ' + esc(sale.no), size: 'sm',
+    body: `<div>Transaksi senilai <b>${rp(sale.total)}</b> (${esc(payName(sale.method))}) akan dibatalkan:</div>
+      <ul style="margin:0;padding-left:18px;color:var(--ink-700)"><li>stok bahan dikembalikan sesuai resep</li><li>jurnal penjualan, PBJT, dan HPP dibalik</li><li>dana ${sale.method === 'tunai' ? 'dikembalikan dari kas' : 'dikembalikan lewat bank'} ke pelanggan</li></ul>
+      <div class="field"><label for="sv-reason">Alasan void</label><input class="input" id="sv-reason" placeholder="mis. Salah input menu" autofocus></div>`,
+    foot: `<button class="btn" data-act="sale-view" data-no="${esc(sale.no)}">Kembali</button><button class="btn btn-primary" data-act="sale-void-ok" data-no="${esc(sale.no)}">${icon('ban', 16)} Void transaksi</button>` });
+};
+ACT['sale-void-ok'] = el => {
+  const sale = S.sales.find(s => s.no === el.dataset.no);
+  const reason = document.getElementById('sv-reason').value.trim();
+  if (!reason) { toast('Isi alasan void.', 'triangle-alert'); return; }
+  withApproval('penjualan.void', 'Persetujuan void ' + sale.no, 'Void transaksi memerlukan izin manajer.', u => {
+    const no = voidSale(Date.now(), sale, reason, u.name);
+    audit('Void transaksi', `${sale.no} (${rp(sale.total)}): ${reason}${u.id !== currentUser().id ? ' · disetujui ' + u.name : ''}`);
+    refresh(); showReceipt(sale);
+    toast(`${sale.no} di-void (${no}). Stok & jurnal dibalik.`, 'ban');
+  });
+};

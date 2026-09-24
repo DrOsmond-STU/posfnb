@@ -6,7 +6,7 @@ Purwarupa interaktif sudah tersedia di <https://posfnb.semestateknologiutama.com
 
 | Atribut | Nilai |
 |---|---|
-| Versi dokumen | 1.0 |
+| Versi dokumen | 1.0.1 |
 | Tanggal | 24 September 2026 |
 | Status | Draf untuk ditinjau pemilik produk |
 | Pemilik produk | Semesta Teknologi Utama |
@@ -43,3 +43,4 @@ Perubahan dokumen dilakukan lewat *pull request*. Setiap perubahan aturan bisnis
 | Versi | Tanggal | Perubahan |
 |---|---|---|
 | 1.0 | 24 Sep 2026 | Versi pertama, disusun dari purwarupa Racik POS (commit `ad85215`) |
+| 1.0.1 | 24 Sep 2026 | Purwarupa kini punya void transaksi, batal bill, batal biaya & bahan rusak, ubah PO draft, hapus master yang belum dipakai, dan reservasi baru |

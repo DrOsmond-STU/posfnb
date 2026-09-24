@@ -53,6 +53,7 @@ const ACTION_PERMS = [
   ['kasir.bayar', 'Terima pembayaran', 'Kasir'],
   ['kasir.diskon', 'Beri diskon tanpa persetujuan', 'Kasir'],
   ['penjualan.semua', 'Lihat transaksi semua kasir', 'Penjualan'],
+  ['penjualan.void', 'Void transaksi & batalkan bill', 'Penjualan'],
   ['menu.edit', 'Ubah resep & harga jual', 'Menu'],
   ['po.buat', 'Buat, kirim & batalkan PO; kelola pemasok', 'Pembelian'],
   ['po.terima', 'Posting penerimaan barang', 'Pembelian'],
@@ -75,7 +76,7 @@ const ROLE_SEED = [
   { id: 'owner', name: 'Pemilik', tone: 'bad', locked: true, desc: 'Akses penuh ke semua modul dan pengaturan.', perms: ['*'] },
   { id: 'manajer', name: 'Manajer Outlet', tone: 'gold', desc: 'Menjalankan operasional harian, menyetujui diskon, dan membaca semua laporan.',
     perms: ['m:dashboard', 'm:kasir', 'm:meja', 'm:dapur', 'm:penjualan', 'm:menu', 'm:pembelian', 'm:pemasok', 'm:persediaan', 'm:kas', 'm:lap-penjualan', 'm:lap-keuangan', 'm:lap-persediaan', 'm:pengaturan',
-      'kasir.bayar', 'kasir.diskon', 'penjualan.semua', 'menu.edit', 'po.buat', 'po.terima', 'po.bayar', 'stok.bahan', 'stok.opname', 'stok.waste', 'kas.catat', 'pengaturan.ubah'] },
+      'kasir.bayar', 'kasir.diskon', 'penjualan.semua', 'penjualan.void', 'menu.edit', 'po.buat', 'po.terima', 'po.bayar', 'stok.bahan', 'stok.opname', 'stok.waste', 'kas.catat', 'pengaturan.ubah'] },
   { id: 'kasir', name: 'Kasir', tone: 'info', desc: 'Mencatat pesanan dan menerima pembayaran. Diskon perlu PIN manajer.',
     perms: ['m:kasir', 'm:meja', 'm:dapur', 'm:penjualan', 'kasir.bayar'] },
   { id: 'dapur', name: 'Kepala Dapur', tone: 'ok', desc: 'Mengelola layar dapur, standar resep, stok opname, dan bahan rusak.',
@@ -114,6 +115,12 @@ function seedAuth() {
 function loadAuth() {
   try { const raw = localStorage.getItem(AUTH_KEY); if (raw) { const a = JSON.parse(raw); if (a && a.ver === 1) AUTH = a; } } catch (e) { /* abaikan */ }
   if (!AUTH) { AUTH = seedAuth(); saveAuth(); }
+  AUTH.migrations = AUTH.migrations || [];
+  if (!AUTH.migrations.includes('void-perm')) {
+    const m = AUTH.roles.find(r => r.id === 'manajer');
+    if (m && !m.perms.includes('penjualan.void')) m.perms.push('penjualan.void');
+    AUTH.migrations.push('void-perm'); saveAuth();
+  }
   SESSION = readSession();
 }
 function saveAuth() { try { localStorage.setItem(AUTH_KEY, JSON.stringify(AUTH)); } catch (e) { /* abaikan */ } }
@@ -168,6 +175,8 @@ const ACT_PERM = {
   'ing-save': 'stok.bahan', 'opn-new': 'stok.opname', 'opn-post': 'stok.opname', 'waste-new': 'stok.waste', 'ws-save': 'stok.waste',
   'exp-new': 'kas.catat', 'exp-save': 'kas.catat', 'cash-deposit': 'kas.catat', 'cd-save': 'kas.catat', 'tax-pay': 'kas.catat', 'tax-save': 'kas.catat',
   'st-save': 'pengaturan.ubah', 'reset-ask': 'data.reset', 'reset-do': 'data.reset',
+  'sup-del': 'po.buat', 'po-edit': 'po.buat', 'ing-del': 'stok.bahan', 'menu-del': 'menu.edit',
+  'waste-void': 'stok.waste', 'exp-void': 'kas.catat', 'resv-new': 'm:meja', 'resv-save': 'm:meja',
   'user-edit': 'pengguna.kelola', 'user-save': 'pengguna.kelola', 'role-toggle': 'pengguna.kelola',
 };
 function permOk(actName) {
@@ -387,13 +396,16 @@ setInterval(() => {
   if (currentUser() && Date.now() - lastActivity > IDLE_MS) logout('Sesi dikunci karena tidak ada aktivitas selama 30 menit.', true);
 }, 60000);
 
-/* ---------- Persetujuan diskon oleh manajer ---------- */
-function askDiscountApproval(pct, onOk) {
-  const approvers = activeUsers().filter(u => u.pin && can('kasir.diskon', u));
+/* ---------- Persetujuan dengan PIN (diskon, void, batal bill) ----------
+   Bila pengguna sendiri punya izin, aksi langsung jalan tanpa PIN. */
+function withApproval(perm, title, info, onOk) {
+  if (can(perm)) { onOk(currentUser()); return; }
+  const approvers = activeUsers().filter(u => u.pin && can(perm, u));
+  if (!approvers.length) { toast('Tidak ada penyetuju aktif yang punya PIN.', 'ban'); return; }
   openModal({
-    title: 'Persetujuan diskon ' + pct + '%', size: 'sm',
-    body: `<div class="alert info">${icon('shield', 16)}<div>Peran Anda tidak bisa memberi diskon sendiri. Minta manajer atau pemilik memasukkan PIN-nya.</div></div>
-      <div class="field"><label for="ap-user">Disetujui oleh</label><select class="input" id="ap-user">${opts(approvers.map(u => [u.id, u.name + ' · ' + roleById(u.role).name]), approvers[0] && approvers[0].id)}</select></div>
+    title, size: 'sm',
+    body: `<div class="alert info">${icon('shield', 16)}<div>${info} Minta manajer atau pemilik memasukkan PIN-nya.</div></div>
+      <div class="field"><label for="ap-user">Disetujui oleh</label><select class="input" id="ap-user">${opts(approvers.map(u => [u.id, u.name + ' · ' + roleById(u.role).name]), approvers[0].id)}</select></div>
       <div class="field"><label for="ap-pin">PIN 6 digit</label><input class="input num" id="ap-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" autofocus></div>
       <div id="ap-err"></div>`,
     foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="ap-ok">${icon('check', 16)} Setujui</button>`,
@@ -405,16 +417,21 @@ function askDiscountApproval(pct, onOk) {
     if (attemptsLeft(key).locked) { document.getElementById('ap-err').innerHTML = `<div class="alert bad">${icon('ban', 16)}<div>PIN ${esc(u.name)} sedang terkunci.</div></div>`; return; }
     if (u.pin !== hashSecret(u.id, 'pin', pin)) {
       failAttempt(key, u.id);
-      audit('Persetujuan diskon ditolak', 'PIN salah untuk ' + u.name);
+      audit('Persetujuan ditolak', `${title}: PIN salah untuk ${u.name}`);
       document.getElementById('ap-err').innerHTML = `<div class="alert bad">${icon('triangle-alert', 16)}<div>PIN salah.</div></div>`;
       document.getElementById('ap-pin').value = ''; document.getElementById('ap-pin').focus();
       return;
     }
     delete AUTH.attempts[key];
-    audit('Persetujuan diskon', `Diskon ${pct}% disetujui oleh ${u.name}`);
     closeModal(true);
     onOk(u);
   };
+}
+function askDiscountApproval(pct, onOk) {
+  withApproval('kasir.diskon', 'Persetujuan diskon ' + pct + '%', 'Peran Anda tidak bisa memberi diskon sendiri.', u => {
+    audit('Persetujuan diskon', `Diskon ${pct}% disetujui oleh ${u.name}`);
+    onOk(u);
+  });
 }
 
 /* ---------- Profil sendiri ---------- */
@@ -493,7 +510,7 @@ ACT['role-toggle'] = el => {
 ACT['user-edit'] = el => {
   const u = el.dataset.id ? userById(el.dataset.id) : null;
   const isNew = !u;
-  const d = u || { id: 'U' + pad(AUTH.users.length + 1), name: '', email: '', role: 'kasir', active: true };
+  const d = u || { id: nextId(AUTH.users, 'U'), name: '', email: '', role: 'kasir', active: true };
   openModal({
     title: isNew ? 'Tambah pengguna' : 'Ubah pengguna',
     body: `<div class="form-grid">

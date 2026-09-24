@@ -92,10 +92,10 @@ Warna sinyal hanya dipakai untuk status, bukan untuk membedakan seri grafik.
 |---|---|---|
 | Masuk (email / PIN) | Ada | Tambah "lupa kata sandi" via email |
 | Dasbor | Ada | Data dari `/dashboard` |
-| Kasir + pembayaran + struk | Ada | Tambah split bill, indikator luring, antrean sinkron |
+| Kasir + pembayaran + struk | Ada (termasuk batal bill) | Tambah split bill, indikator luring, antrean sinkron |
 | Meja & pesanan | Ada | Tambah pindah/gabung meja |
 | Layar dapur | Ada | Mode layar penuh, bunyi |
-| Riwayat penjualan | Ada | Tambah void & ekspor |
+| Riwayat penjualan | Ada (termasuk void) | Tambah ekspor |
 | Standar menu & resep | Ada | Tambah unggah foto, riwayat harga |
 | Pembelian (PO, GRN, hutang, saran) | Ada | Tambah PDF PO & kirim |
 | Pemasok | Ada | |

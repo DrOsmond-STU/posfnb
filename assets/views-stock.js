@@ -47,7 +47,7 @@ function menuDetailHTML() {
   return `
   <div class="row between">
     <button class="btn btn-ghost" data-act="menu-back">${icon('chevron-left', 16)} Semua menu</button>
-    <div class="row"><button class="btn" data-act="menu-back">Batal</button><button class="btn btn-primary" data-act="menu-save">${icon('save', 16)} Simpan standar menu</button></div>
+    <div class="row">${!m.isNew ? `<button class="btn btn-danger" data-act="menu-del" data-id="${m.id}" title="${menuInUse(m.id) ? 'Menu sudah pernah dijual; nonaktifkan saja' : 'Hapus menu'}">${icon('trash-2', 16)} Hapus</button>` : ''}<button class="btn" data-act="menu-back">Batal</button><button class="btn btn-primary" data-act="menu-save">${icon('save', 16)} Simpan standar menu</button></div>
   </div>
   ${can('menu.edit') ? '' : `<div class="alert info">${icon('eye', 16)}<div><b>Mode lihat saja.</b> Peran Anda bisa membaca standar resep tetapi tidak bisa mengubah takaran atau harga.</div></div>`}
   <div class="card card-b">
@@ -117,7 +117,7 @@ ACT['menu-open'] = el => {
 };
 ACT['menu-new'] = () => {
   const n = S.menu.length + 1;
-  MENU_EDIT = { id: 'MN' + pad(n), name: 'Menu baru', cat: 'Makanan', price: 30000, pop: 3, prep: 8, icon: 'utensils', recipe: [['BB01', 150]], steps: ['Tulis langkah pertama'], serve: '', active: true, isNew: true };
+  MENU_EDIT = { id: nextId(S.menu, 'MN'), name: 'Menu baru', cat: 'Makanan', price: 30000, pop: 3, prep: 8, icon: 'utensils', recipe: [['BB01', 150]], steps: ['Tulis langkah pertama'], serve: '', active: true, isNew: true };
   UI.menu.detail = MENU_EDIT.id; render(); window.scrollTo(0, 0);
 };
 ACT['menu-back'] = () => { UI.menu.detail = null; MENU_EDIT = null; render(); };
@@ -140,6 +140,14 @@ ACT['menu-save'] = () => {
   refresh(); toast(`Standar menu "${clean.name}" disimpan.`);
 };
 
+ACT['menu-del'] = el => {
+  const m = menuById(el.dataset.id);
+  if (menuInUse(m.id)) { toast(`"${m.name}" sudah punya riwayat penjualan atau ada di bill terbuka. Matikan "Tampil di kasir" untuk menyembunyikannya.`, 'ban'); return; }
+  S.menu = S.menu.filter(x => x.id !== m.id);
+  UI.menu.detail = null; MENU_EDIT = null;
+  refresh(); toast(`Menu "${m.name}" dihapus.`, 'trash-2');
+};
+
 /* =========================== PEMASOK =========================== */
 VIEWS.pemasok = () => {
   const r30 = range('30d');
@@ -148,13 +156,15 @@ VIEWS.pemasok = () => {
     <button class="btn btn-primary" data-act="sup-edit">${icon('plus', 16)} Tambah pemasok</button></div>
   <div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>Kode</th><th>Pemasok</th><th>Kategori</th><th>Kontak</th><th class="num">Termin</th><th class="num">Bahan dipasok</th><th class="num">Pembelian 30 hari</th><th class="num">Hutang berjalan</th><th></th></tr></thead><tbody>
   ${S.suppliers.map(s => {
+    const off = s.active === false;
     const buy = sumBy(S.grns.filter(g => g.sup === s.id && inRange(g.t, r30)), g => g.value);
     const ap = sumBy(S.pos.filter(p => p.sup === s.id), poOutstanding);
-    return `<tr class="click" data-act="sup-edit" data-id="${s.id}"><td class="mono">${s.id}</td><td><div class="strong">${esc(s.name)}</div><div class="sub">${esc(s.city)}</div></td><td>${esc(s.cat)}</td><td>${esc(s.pic)}<div class="sub">${esc(s.phone)}</div></td><td class="num">${s.terms} hari</td><td class="num">${S.ingredients.filter(i => i.sup === s.id).length}</td><td class="num">${rp(buy)}</td><td class="num strong">${ap ? rp(ap) : '<span class="faint">—</span>'}</td><td>${icon('pencil', 15)}</td></tr>`;
+    return `<tr class="click" data-act="sup-edit" data-id="${s.id}"><td class="mono">${s.id}</td><td><div class="strong">${esc(s.name)}</div><div class="sub">${esc(s.city)}</div></td><td>${esc(s.cat)}</td><td>${esc(s.pic)}<div class="sub">${esc(s.phone)}</div></td><td class="num">${s.terms} hari</td><td class="num">${S.ingredients.filter(i => i.sup === s.id).length}</td><td class="num">${rp(buy)}</td><td class="num strong">${ap ? rp(ap) : '<span class="faint">—</span>'}</td><td>${off ? '<span class="pill">Nonaktif</span>' : icon('pencil', 15)}</td></tr>`;
   }).join('')}</tbody></table></div></div>`;
 };
 ACT['sup-edit'] = el => {
-  const s = el.dataset.id ? supById(el.dataset.id) : { id: 'SP' + pad(S.suppliers.length + 1), name: '', cat: '', pic: '', phone: '', terms: 14, city: '' };
+  const s = el.dataset.id ? supById(el.dataset.id) : { id: nextId(S.suppliers, 'SP'), name: '', cat: '', pic: '', phone: '', terms: 14, city: '', active: true };
+  const used = el.dataset.id && supplierInUse(s.id);
   openModal({
     title: el.dataset.id ? 'Ubah pemasok' : 'Tambah pemasok',
     body: `<div class="form-grid">
@@ -163,8 +173,10 @@ ACT['sup-edit'] = el => {
       <div class="field"><label for="sp-city">Kota</label><input class="input" id="sp-city" value="${esc(s.city)}"></div>
       <div class="field"><label for="sp-pic">Nama kontak</label><input class="input" id="sp-pic" value="${esc(s.pic)}"></div>
       <div class="field"><label for="sp-phone">Telepon / WhatsApp</label><input class="input" id="sp-phone" value="${esc(s.phone)}"></div>
-      <div class="field"><label for="sp-terms">Termin pembayaran (hari)</label><input class="input num" id="sp-terms" inputmode="numeric" value="${s.terms}"></div></div>`,
-    foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="sup-save" data-id="${s.id}">${icon('save', 16)} Simpan</button>`,
+      <div class="field"><label for="sp-terms">Termin pembayaran (hari)</label><input class="input num" id="sp-terms" inputmode="numeric" value="${s.terms}"></div>
+      <label class="switch" style="align-self:end;padding-bottom:10px"><input type="checkbox" id="sp-active" ${s.active !== false ? 'checked' : ''}> Pemasok aktif</label></div>
+      ${used ? '<div class="faint" style="font-size:12px">Pemasok ini sudah punya PO atau bahan, jadi tidak bisa dihapus. Nonaktifkan agar tidak muncul di PO baru.</div>' : ''}`,
+    foot: `${el.dataset.id && !used ? `<button class="btn btn-danger" data-act="sup-del" data-id="${s.id}">${icon('trash-2', 16)} Hapus</button><span class="spacer"></span>` : ''}<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="sup-save" data-id="${s.id}">${icon('save', 16)} Simpan</button>`,
   });
 };
 ACT['sup-save'] = el => {
@@ -172,8 +184,14 @@ ACT['sup-save'] = el => {
   if (!v('sp-name')) { toast('Nama pemasok wajib diisi.', 'triangle-alert'); return; }
   let s = supById(el.dataset.id);
   if (!s) { s = { id: el.dataset.id }; S.suppliers.push(s); }
-  Object.assign(s, { name: v('sp-name'), cat: v('sp-cat'), city: v('sp-city'), pic: v('sp-pic'), phone: v('sp-phone'), terms: +v('sp-terms') || 0 });
+  Object.assign(s, { name: v('sp-name'), cat: v('sp-cat'), city: v('sp-city'), pic: v('sp-pic'), phone: v('sp-phone'), terms: +v('sp-terms') || 0, active: document.getElementById('sp-active').checked });
   closeModal(true); refresh(); toast('Data pemasok disimpan.');
+};
+ACT['sup-del'] = el => {
+  const s = supById(el.dataset.id);
+  if (supplierInUse(s.id)) { toast('Pemasok sudah dipakai PO atau bahan; nonaktifkan saja.', 'ban'); return; }
+  S.suppliers = S.suppliers.filter(x => x.id !== s.id);
+  closeModal(true); refresh(); toast(`Pemasok ${s.name} dihapus.`, 'trash-2');
 };
 
 /* =========================== PEMBELIAN =========================== */
@@ -248,7 +266,7 @@ function poFormHTML() {
   const total = sumBy(e.lines, l => l.qty * l.price);
   const ingSelect = (cur, i) => `<select class="input sm" data-ch="pol-ing" data-i="${i}" aria-label="Bahan"><optgroup label="Dipasok ${esc(supById(e.sup).name)}">${opts(supIngs.map(x => [x.id, x.name]), cur)}</optgroup><optgroup label="Bahan lain">${opts(others.map(x => [x.id, x.name]), cur)}</optgroup></select>`;
   return `<div class="form-grid" style="grid-template-columns:2fr 1fr 1fr">
-      <div class="field"><label for="po-sup">Pemasok</label><select class="input" id="po-sup" data-ch="po-sup">${opts(S.suppliers.map(s => [s.id, s.name]), e.sup)}</select></div>
+      <div class="field"><label for="po-sup">Pemasok</label><select class="input" id="po-sup" data-ch="po-sup">${opts(S.suppliers.filter(s => s.active !== false || s.id === e.sup).map(s => [s.id, s.name]), e.sup)}</select></div>
       <div class="field"><label for="po-date">Tanggal PO</label><input class="input" id="po-date" value="${fmtDate(Date.now())}" disabled></div>
       <div class="field"><label for="po-terms">Termin</label><input class="input" id="po-terms" value="${supById(e.sup).terms} hari" disabled></div></div>
     <div class="table-wrap"><table class="tbl"><thead><tr><th style="min-width:200px">Bahan</th><th class="num" style="width:100px">Jumlah</th><th>Satuan</th><th class="num" style="width:140px">Harga / satuan</th><th class="num">Subtotal</th><th></th></tr></thead><tbody>
@@ -261,14 +279,23 @@ function poFormHTML() {
     <div class="field"><label for="po-note">Catatan untuk pemasok</label><input class="input" id="po-note" value="${esc(e.note)}" data-in="po-note" placeholder="mis. Kirim sebelum jam 9 pagi, lewat pintu belakang"></div>`;
 }
 function openPOForm() {
-  openModal({ title: 'Buat purchase order', size: 'lg', body: poFormHTML(),
+  openModal({ title: PO_EDIT.no ? 'Ubah draft ' + esc(PO_EDIT.no) : 'Buat purchase order', size: 'lg', body: poFormHTML(),
     foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn" data-act="po-save" data-v="draft">Simpan draft</button><button class="btn btn-primary" data-act="po-save" data-v="dikirim">${icon('send', 16)} Simpan &amp; kirim ke pemasok</button>` });
 }
 const paintPO = () => { modalEl().querySelector('.modal-b').innerHTML = poFormHTML(); };
 function sugLines(sup) {
   return (suggestions()[sup] || []).filter(r => r.qty > 0).map(r => ({ ing: r.i.id, qty: r.qty, price: Math.round(r.i.lastPrice) }));
 }
-ACT['po-new'] = () => { PO_EDIT = { sup: 'SP01', lines: [], note: '' }; PO_EDIT.lines = sugLines('SP01'); openPOForm(); };
+ACT['po-new'] = () => {
+  const sup = (S.suppliers.find(s => s.active !== false) || S.suppliers[0]).id;
+  PO_EDIT = { sup, lines: sugLines(sup), note: '' }; openPOForm();
+};
+ACT['po-edit'] = el => {
+  const p = poByNo(el.dataset.no);
+  if (p.status !== 'draft') { toast('Hanya PO berstatus draft yang bisa diubah.', 'ban'); return; }
+  PO_EDIT = { no: p.no, sup: p.sup, lines: p.lines.map(l => ({ ing: l.ing, qty: l.qty, price: l.price })), note: p.note };
+  openPOForm();
+};
 ACT['po-from-sug'] = el => { PO_EDIT = { sup: el.dataset.sup, lines: sugLines(el.dataset.sup), note: '' }; openPOForm(); };
 ACT['po-sup'] = el => { PO_EDIT.sup = el.value; PO_EDIT.lines = sugLines(el.value); paintPO(); };
 ACT['pol-ing'] = el => { const l = PO_EDIT.lines[+el.dataset.i]; l.ing = el.value; l.price = Math.round(ingById(el.value).lastPrice); paintPO(); };
@@ -281,7 +308,12 @@ ACT['po-note'] = el => { PO_EDIT.note = el.value; };
 ACT['po-save'] = el => {
   const lines = PO_EDIT.lines.filter(l => l.qty > 0);
   if (!lines.length) { toast('Isi minimal satu barang dengan jumlah lebih dari 0.', 'triangle-alert'); return; }
-  const po = createPO(Date.now(), PO_EDIT.sup, lines, el.dataset.v, PO_EDIT.note);
+  let po;
+  if (PO_EDIT.no) {
+    po = poByNo(PO_EDIT.no);
+    updatePO(po, PO_EDIT.sup, lines, PO_EDIT.note);
+    if (el.dataset.v === 'dikirim') { po.status = 'dikirim'; po.sentAt = Date.now(); }
+  } else po = createPO(Date.now(), PO_EDIT.sup, lines, el.dataset.v, PO_EDIT.note);
   closeModal(true); UI.buy.tab = 'po'; UI.buy.status = 'all';
   refresh(); toast(`${po.no} ${el.dataset.v === 'draft' ? 'disimpan sebagai draft' : 'dikirim ke ' + supById(po.sup).name}.`, 'send');
 };
@@ -307,6 +339,7 @@ function poDetail(no) {
       ${p.note ? `<div class="alert">${icon('notebook-pen', 16)}<div>${esc(p.note)}</div></div>` : ''}
       ${p.grns.length ? `<div class="muted" style="font-size:12.5px">Dokumen penerimaan: ${p.grns.map(g => `<span class="mono">${esc(g)}</span>`).join(', ')}</div>` : ''}`,
     foot: `${['draft', 'dikirim'].includes(p.status) ? `<button class="btn btn-danger" data-act="po-cancel" data-no="${esc(p.no)}">Batalkan PO</button>` : ''}<span class="spacer"></span>
+      ${p.status === 'draft' ? `<button class="btn" data-act="po-edit" data-no="${esc(p.no)}">${icon('pencil', 16)} Ubah draft</button>` : ''}
       ${p.status === 'draft' ? `<button class="btn btn-primary" data-act="po-send" data-no="${esc(p.no)}">${icon('send', 16)} Kirim ke pemasok</button>` : ''}
       ${canRecv ? `<button class="btn btn-primary" data-act="po-recv" data-no="${esc(p.no)}">${icon('package-check', 16)} Terima barang</button>` : ''}
       ${canPay ? `<button class="btn btn-gold" data-act="po-pay" data-no="${esc(p.no)}">${icon('hand-coins', 16)} Catat pembayaran</button>` : ''}
@@ -355,9 +388,13 @@ ACT['po-pay'] = el => {
 ACT['pp-save'] = el => {
   const p = poByNo(el.dataset.no);
   const amt = +document.getElementById('pp-amt').value.replace(/\D/g, '') || 0;
+  const m = document.getElementById('pp-m').value;
   if (amt <= 0) { toast('Jumlah pembayaran harus lebih dari 0.', 'triangle-alert'); return; }
-  payPO(Date.now(), p, amt, document.getElementById('pp-m').value);
-  closeModal(true); refresh(); toast(`Pembayaran ${rp(Math.min(amt, amt))} untuk ${p.no} tercatat.`, 'hand-coins');
+  if (amt > poOutstanding(p)) { toast(`Jumlah melebihi sisa hutang ${rp(poOutstanding(p))}.`, 'triangle-alert'); return; }
+  const bal = accBalance(cashAccount(m));
+  if (amt > bal) { toast(`Saldo ${m === 'tunai' ? 'kas' : 'bank'} tidak cukup (${rp(bal)}).`, 'triangle-alert'); return; }
+  const paid = payPO(Date.now(), p, amt, m);
+  closeModal(true); refresh(); toast(`Pembayaran ${rp(paid)} untuk ${p.no} tercatat.`, 'hand-coins');
 };
 ACT['grn-view'] = el => {
   const g = S.grns.find(x => x.no === el.dataset.no);
@@ -370,7 +407,7 @@ ACT['grn-view'] = el => {
 };
 
 /* =========================== PERSEDIAAN =========================== */
-const MOVE_LABEL = { awal: 'Saldo awal', beli: 'Pembelian', jual: 'Pemakaian penjualan', waste: 'Bahan rusak', opname: 'Penyesuaian opname' };
+const MOVE_LABEL = { awal: 'Saldo awal', beli: 'Pembelian', jual: 'Pemakaian penjualan', waste: 'Bahan rusak', opname: 'Penyesuaian opname', void: 'Pembatalan penjualan' };
 const ING_CATS = () => [...new Set(S.ingredients.map(i => i.cat))];
 VIEWS.persediaan = () => {
   const st = UI.stock;
@@ -416,9 +453,9 @@ VIEWS.persediaan = () => {
       </tbody></table></div></div>`;
   } else {
     body = `<div class="row between"><div class="muted">Bahan rusak, kedaluwarsa, atau terbuang dicatat agar food cost aktual tetap akurat.</div><button class="btn btn-primary" data-act="waste-new">${icon('plus', 16)} Catat bahan rusak</button></div>
-      <div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>No.</th><th>Tanggal</th><th>Bahan</th><th class="num">Jumlah</th><th>Alasan</th><th>Dicatat oleh</th><th class="num">Nilai</th></tr></thead><tbody>
-      ${S.wastes.slice().reverse().map(w => { const i = ingById(w.ing); return `<tr><td class="mono">${esc(w.no)}</td><td>${fmtDT(w.t)}</td><td class="strong">${esc(i.name)}</td><td class="num">${fmtQty(i, w.qty)}</td><td>${esc(w.reason)}</td><td>${esc(w.by)}</td><td class="num neg">${rp(w.value)}</td></tr>`; }).join('') || `<tr><td colspan="7">${emptyState('trash-2', 'Belum ada catatan bahan rusak.')}</td></tr>`}
-      </tbody><tfoot><tr><td colspan="6">Total</td><td class="num">${rp(sumBy(S.wastes, w => w.value))}</td></tr></tfoot></table></div></div>`;
+      <div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>No.</th><th>Tanggal</th><th>Bahan</th><th class="num">Jumlah</th><th>Alasan</th><th>Dicatat oleh</th><th class="num">Nilai</th><th></th></tr></thead><tbody>
+      ${S.wastes.slice().reverse().map(w => { const i = ingById(w.ing); const off = w.status === 'batal'; return `<tr><td class="mono">${esc(w.no)}</td><td>${fmtDT(w.t)}</td><td class="strong">${esc(i.name)}</td><td class="num">${fmtQty(i, w.qty)}</td><td>${esc(w.reason)}${off ? ` <span class="pill">Dibatalkan</span>` : ''}</td><td>${esc(w.by)}</td><td class="num ${off ? 'faint' : 'neg'}" ${off ? 'style="text-decoration:line-through"' : ''}>${rp(w.value)}</td><td>${off ? '' : `<button class="btn btn-sm btn-ghost" data-act="waste-void" data-no="${esc(w.no)}">Batalkan</button>`}</td></tr>`; }).join('') || `<tr><td colspan="8">${emptyState('trash-2', 'Belum ada catatan bahan rusak.')}</td></tr>`}
+      </tbody><tfoot><tr><td colspan="6">Total (tanpa yang dibatalkan)</td><td class="num">${rp(sumBy(S.wastes.filter(w => w.status !== 'batal'), w => w.value))}</td><td></td></tr></tfoot></table></div></div>`;
   }
   return `<div class="tabs">${tabs.map(([k, l]) => `<button type="button" class="${st.tab === k ? 'on' : ''}" data-act="stk-tab" data-v="${k}">${l}</button>`).join('')}</div>${body}`;
 };
@@ -432,7 +469,7 @@ ACT['stk-card-period'] = el => { UI.stock.cardPeriod = el.dataset.v; render(); }
 
 ACT['ing-edit'] = el => {
   const i = el.dataset.id ? ingById(el.dataset.id) : null;
-  const d = i || { id: 'BB' + pad(S.ingredients.length + 1), name: '', cat: 'Bahan Pokok', unit: 'gr', buy: 'kg', conv: 1000, lastPrice: 0, min: 1000, sup: 'SP03' };
+  const d = i || { id: nextId(S.ingredients, 'BB'), name: '', cat: 'Bahan Pokok', unit: 'gr', buy: 'kg', conv: 1000, lastPrice: 0, min: 1000, sup: 'SP03' };
   openModal({
     title: i ? 'Ubah bahan' : 'Tambah bahan baku',
     body: `<div class="form-grid">
@@ -444,8 +481,9 @@ ACT['ing-edit'] = el => {
       <div class="field"><label for="ig-conv">Isi per satuan beli (dalam satuan pakai)</label><input class="input num" id="ig-conv" inputmode="numeric" value="${d.conv}" ${i ? 'disabled' : ''}></div>
       <div class="field"><label for="ig-price">Harga beli terakhir / satuan beli</label><input class="input num" id="ig-price" inputmode="numeric" value="${Math.round(d.lastPrice)}"></div>
       <div class="field"><label for="ig-min">Stok minimum (satuan pakai)</label><input class="input num" id="ig-min" inputmode="numeric" value="${Math.round(d.min)}"></div>
-      <div class="field"><label for="ig-sup">Pemasok utama</label><select class="input" id="ig-sup">${opts(S.suppliers.map(s => [s.id, s.name]), d.sup)}</select></div></div>`,
-    foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="ing-save" data-id="${d.id}" data-new="${i ? '' : '1'}">${icon('save', 16)} Simpan</button>`,
+      <div class="field"><label for="ig-sup">Pemasok utama</label><select class="input" id="ig-sup">${opts(S.suppliers.filter(s => s.active !== false || s.id === d.sup).map(s => [s.id, s.name]), d.sup)}</select></div></div>
+      ${i && ingredientInUse(i.id) ? '<div class="faint" style="font-size:12px">Bahan ini sudah dipakai resep, PO, atau punya mutasi stok, jadi tidak bisa dihapus.</div>' : ''}`,
+    foot: `${i && !ingredientInUse(i.id) ? `<button class="btn btn-danger" data-act="ing-del" data-id="${i.id}">${icon('trash-2', 16)} Hapus</button><span class="spacer"></span>` : ''}<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="ing-save" data-id="${d.id}" data-new="${i ? '' : '1'}">${icon('save', 16)} Simpan</button>`,
   });
 };
 ACT['ing-save'] = el => {
@@ -460,6 +498,13 @@ ACT['ing-save'] = el => {
   Object.assign(i, { name: v('ig-name'), cat: v('ig-cat') || 'Lainnya', buy: v('ig-buy') || i.unit, lastPrice: +v('ig-price') || 0, min: +v('ig-min') || 0, sup: v('ig-sup') });
   i.target = Math.max(i.target || 0, i.min * 3.6);
   closeModal(true); refresh(); toast('Data bahan disimpan.');
+};
+
+ACT['ing-del'] = el => {
+  const i = ingById(el.dataset.id);
+  if (ingredientInUse(i.id)) { toast('Bahan sudah dipakai; tidak bisa dihapus.', 'ban'); return; }
+  S.ingredients = S.ingredients.filter(x => x.id !== i.id);
+  closeModal(true); refresh(); toast(`Bahan ${i.name} dihapus.`, 'trash-2');
 };
 
 /* ---------- Opname ---------- */
@@ -511,6 +556,20 @@ ACT['waste-new'] = () => {
       <div class="field"><label for="ws-qty">Jumlah (<span id="ws-unit">gr</span>)</label><input class="input num" id="ws-qty" inputmode="decimal" value="" autofocus></div>
       <div class="field"><label for="ws-reason">Alasan</label><select class="input" id="ws-reason">${opts(['Layu / busuk', 'Kedaluwarsa', 'Rusak saat penyimpanan', 'Tumpah / jatuh', 'Salah masak / komplain tamu'].map(x => [x, x]), 'Layu / busuk')}</select></div>`,
     foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="ws-save">${icon('save', 16)} Simpan</button>` });
+};
+ACT['waste-void'] = el => {
+  const w = S.wastes.find(x => x.no === el.dataset.no);
+  openModal({ title: 'Batalkan ' + esc(w.no), size: 'sm',
+    body: `<div>${esc(ingById(w.ing).name)} ${fmtQty(ingById(w.ing), w.qty)} (${rp(w.value)}) akan dikembalikan ke stok dan jurnalnya dibalik.</div>
+      <div class="field"><label for="wv-reason">Alasan</label><input class="input" id="wv-reason" placeholder="mis. Salah catat jumlah" autofocus></div>`,
+    foot: `<button class="btn" data-act="modal-close">Kembali</button><button class="btn btn-primary" data-act="waste-void-ok" data-no="${esc(w.no)}">Batalkan catatan</button>` });
+};
+ACT['waste-void-ok'] = el => {
+  const w = S.wastes.find(x => x.no === el.dataset.no), reason = document.getElementById('wv-reason').value.trim();
+  if (!reason) { toast('Isi alasan pembatalan.', 'triangle-alert'); return; }
+  voidWaste(Date.now(), w, reason, currentUser().name);
+  audit('Bahan rusak dibatalkan', `${w.no}: ${reason}`);
+  closeModal(true); refresh(); toast(`${w.no} dibatalkan; stok dikembalikan.`, 'check');
 };
 ACT['ws-ing'] = el => { document.getElementById('ws-unit').textContent = ingById(el.value).unit; };
 ACT['ws-save'] = () => {

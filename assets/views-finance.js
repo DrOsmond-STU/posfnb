@@ -6,7 +6,8 @@
 /* =========================== KAS & BIAYA =========================== */
 VIEWS.kas = () => {
   const r = range(UI.kas.period);
-  const exp = S.expenses.filter(e => inRange(e.t, r)).slice().reverse();
+  const expAll = S.expenses.filter(e => inRange(e.t, r)).slice().reverse();
+  const exp = expAll.filter(e => e.status !== 'batal');
   const byAcc = {};
   exp.forEach(e => { byAcc[e.acc] = (byAcc[e.acc] || 0) + e.amount; });
   return `
@@ -20,8 +21,8 @@ VIEWS.kas = () => {
     <div class="row"><button class="btn" data-act="cash-deposit">${icon('landmark', 16)} Setor kas ke bank</button><button class="btn" data-act="tax-pay">${icon('file-text', 16)} Setor PB1</button><button class="btn btn-primary" data-act="exp-new">${icon('plus', 16)} Catat biaya</button></div></div>
   <div class="grid g-main" style="align-items:start">
     <div class="card"><div class="card-h"><h3>Bukti kas keluar (biaya operasional)</h3></div>
-      <div class="table-wrap"><table class="tbl"><thead><tr><th>No. BKK</th><th>Tanggal</th><th>Akun</th><th>Keterangan</th><th>Dari</th><th class="num">Jumlah</th></tr></thead><tbody>
-      ${exp.map(e => `<tr><td class="mono">${esc(e.no)}</td><td>${fmtDate(e.t)}</td><td>${esc(accName(e.acc))}</td><td>${esc(e.desc)}</td><td>${e.method === 'tunai' ? 'Kas' : 'Bank'}</td><td class="num strong">${rp(e.amount)}</td></tr>`).join('') || `<tr><td colspan="6">${emptyState('wallet', 'Belum ada biaya di periode ini.')}</td></tr>`}
+      <div class="table-wrap"><table class="tbl"><thead><tr><th>No. BKK</th><th>Tanggal</th><th>Akun</th><th>Keterangan</th><th>Dari</th><th class="num">Jumlah</th><th></th></tr></thead><tbody>
+      ${expAll.map(e => { const off = e.status === 'batal'; return `<tr><td class="mono">${esc(e.no)}</td><td>${fmtDate(e.t)}</td><td>${esc(accName(e.acc))}</td><td>${esc(e.desc)}${off ? ' <span class="pill">Dibatalkan</span>' : ''}</td><td>${e.method === 'tunai' ? 'Kas' : 'Bank'}</td><td class="num ${off ? 'faint' : 'strong'}" ${off ? 'style="text-decoration:line-through"' : ''}>${rp(e.amount)}</td><td>${off ? '' : `<button class="btn btn-sm btn-ghost" data-act="exp-void" data-no="${esc(e.no)}">Batalkan</button>`}</td></tr>`; }).join('') || `<tr><td colspan="7">${emptyState('wallet', 'Belum ada biaya di periode ini.')}</td></tr>`}
       </tbody></table></div></div>
     <div class="card"><div class="card-h"><h3>Komposisi biaya</h3><span class="sub">${PERIODS[UI.kas.period]}</span></div>
       <div class="card-b">${Object.keys(byAcc).length ? hbars(Object.entries(byAcc).sort((a, b) => b[1] - a[1]).map(([a, v]) => ({ label: accName(a).replace('Beban ', ''), value: v })), { cls: 'gold' }) : emptyState('chart-pie', 'Tidak ada data.')}</div></div>
@@ -42,8 +43,24 @@ ACT['exp-save'] = () => {
   const amt = +document.getElementById('ex-amt').value.replace(/\D/g, '') || 0;
   const desc = document.getElementById('ex-desc').value.trim();
   if (!desc || amt <= 0) { toast('Isi keterangan dan jumlah biaya.', 'triangle-alert'); return; }
+  const m = document.getElementById('ex-m').value, bal = accBalance(cashAccount(m));
+  if (amt > bal) { toast(`Saldo ${m === 'tunai' ? 'kas' : 'bank'} tidak cukup (${rp(bal)}).`, 'triangle-alert'); return; }
   recordExpense(Date.now(), document.getElementById('ex-acc').value, desc, amt, document.getElementById('ex-m').value);
   closeModal(true); refresh(); toast('Biaya dicatat dan dijurnal otomatis.');
+};
+ACT['exp-void'] = el => {
+  const e = S.expenses.find(x => x.no === el.dataset.no);
+  openModal({ title: 'Batalkan ' + esc(e.no), size: 'sm',
+    body: `<div>${esc(e.desc)} senilai <b>${rp(e.amount)}</b> akan dibatalkan. Jurnal pembalik dibuat dan dana kembali ke ${e.method === 'tunai' ? 'kas' : 'bank'}.</div>
+      <div class="field"><label for="xv-reason">Alasan</label><input class="input" id="xv-reason" placeholder="mis. Salah input nominal" autofocus></div>`,
+    foot: `<button class="btn" data-act="modal-close">Kembali</button><button class="btn btn-primary" data-act="exp-void-ok" data-no="${esc(e.no)}">Batalkan biaya</button>` });
+};
+ACT['exp-void-ok'] = el => {
+  const e = S.expenses.find(x => x.no === el.dataset.no), reason = document.getElementById('xv-reason').value.trim();
+  if (!reason) { toast('Isi alasan pembatalan.', 'triangle-alert'); return; }
+  voidExpense(Date.now(), e, reason, currentUser().name);
+  audit('Biaya dibatalkan', `${e.no} (${rp(e.amount)}): ${reason}`);
+  closeModal(true); refresh(); toast(`${e.no} dibatalkan.`, 'check');
 };
 ACT['cash-deposit'] = () => {
   const bal = accBalance('1-101');
@@ -70,6 +87,7 @@ ACT['tax-pay'] = () => {
 };
 ACT['tax-save'] = () => {
   const bal = accBalance('2-102'), t = Date.now();
+  if (bal > accBalance('1-102')) { toast(`Saldo bank tidak cukup untuk setor ${rp(bal)}.`, 'triangle-alert'); return; }
   postJournal(t, nextNo('BKK', t), 'Setor PB1 ke Bapenda DKI', 'tax', [{ acc: '2-102', d: bal }, { acc: '1-102', c: bal }]);
   closeModal(true); refresh(); toast('Setoran PB1 dicatat.');
 };
@@ -224,7 +242,7 @@ VIEWS['lap-keuangan'] = () => {
   } else if (f.tab === 'kas') {
     const cash = ['1-101', '1-102'];
     const open = sumBy(cash, c => accBalance(c, null, r.from - 1));
-    const cat = { sale: 'Penerimaan dari pelanggan', ap: 'Pembayaran ke pemasok', expense: 'Pembayaran beban operasional', tax: 'Setoran PB1 ke Bapenda', opening: 'Setoran modal pemilik' };
+    const cat = { sale: 'Penerimaan dari pelanggan', void: 'Pengembalian dana pelanggan (void)', ap: 'Pembayaran ke pemasok', expense: 'Pembayaran beban operasional', tax: 'Setoran PB1 ke Bapenda', opening: 'Setoran modal pemilik' };
     const flows = {};
     for (const j of S.journals) {
       if (!inRange(j.t, r) || j.type === 'transfer') continue;
@@ -233,7 +251,7 @@ VIEWS['lap-keuangan'] = () => {
       const k = cat[j.type] || 'Lain-lain';
       flows[k] = (flows[k] || 0) + net;
     }
-    const opKeys = ['Penerimaan dari pelanggan', 'Pembayaran ke pemasok', 'Pembayaran beban operasional', 'Setoran PB1 ke Bapenda'];
+    const opKeys = ['Penerimaan dari pelanggan', 'Pengembalian dana pelanggan (void)', 'Pembayaran ke pemasok', 'Pembayaran beban operasional', 'Setoran PB1 ke Bapenda'];
     const opT = sumBy(opKeys, k => flows[k] || 0);
     const finT = flows['Setoran modal pemilik'] || 0;
     const close = open + opT + finT;
@@ -294,7 +312,9 @@ VIEWS['lap-persediaan'] = () => {
     const openQ = closeQ - sumBy(after, m => m.qty), openV = closeV - sumBy(after, m => m.value);
     const inP = after.filter(m => m.t <= r.to);
     const g = t => ({ q: sumBy(inP.filter(m => m.type === t), m => m.qty), v: sumBy(inP.filter(m => m.type === t), m => m.value) });
-    const buy = g('beli'), use = g('jual'), waste = g('waste'), adj = g('opname');
+    // pembatalan penjualan mengurangi pemakaian; pembatalan waste mengurangi waste (tipe sama)
+    const buy = g('beli'), sold = g('jual'), vd = g('void'), waste = g('waste'), adj = g('opname');
+    const use = { q: sold.q + vd.q, v: sold.v + vd.v };
     return { i, openQ, openV, buy, use, waste, adj, closeQ, closeV };
   });
   const T = k => sumBy(rows, x => (k.includes('.') ? x[k.split('.')[0]][k.split('.')[1]] : x[k]));

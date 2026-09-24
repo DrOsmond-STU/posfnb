@@ -206,12 +206,17 @@ function loadState() {
     const raw = localStorage.getItem(DB_KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      // data demo disimpan lebih dari 1 hari → buat ulang agar tanggal tetap relevan
-      if (s && s.ver === 1 && startOfDay(s.generatedAt) === startOfDay(Date.now())) { S = s; return; }
+      // data disimpan permanen di peramban; hanya dibuat ulang lewat "Atur ulang data demo"
+      if (s && s.ver === 1) { S = s; migrateState(); return; }
     }
   } catch (e) { /* abaikan */ }
   S = buildDemo(Date.now());
   saveState();
+}
+/* lengkapi field yang ditambahkan setelah data lama tersimpan */
+function migrateState() {
+  S.reservations = S.reservations || [];
+  S.suppliers.forEach(x => { if (x.active === undefined) x.active = true; });
 }
 function resetState() {
   try { localStorage.removeItem(DB_KEY); } catch (e) { /* abaikan */ }
@@ -223,6 +228,7 @@ function resetState() {
 const ingById = id => S.ingredients.find(i => i.id === id);
 const menuById = id => S.menu.find(m => m.id === id);
 const supById = id => S.suppliers.find(s => s.id === id);
+const nextId = (list, prefix) => prefix + pad(Math.max(0, ...list.map(x => +String(x.id).replace(/\D/g, '') || 0)) + 1);
 
 function nextNo(prefix, t, daily) {
   const key = prefix + (daily ? ymd(t) : ym(t));
@@ -242,6 +248,33 @@ function portionsAvailable(menu) {
   }
   return min === Infinity ? 0 : Math.max(0, min);
 }
+/* pemakaian bahan untuk sekumpulan item {mid, qty} */
+function usageOf(items) {
+  const u = {};
+  for (const it of items) {
+    const m = menuById(it.mid); if (!m) continue;
+    for (const [id, q] of m.recipe) u[id] = (u[id] || 0) + q * it.qty;
+  }
+  return u;
+}
+/* bahan pertama yang kurang untuk seluruh item (bahan yang dipakai bersama ikut dihitung) */
+function stockShortage(items) {
+  const u = usageOf(items);
+  for (const id in u) { const i = ingById(id); if (i && u[id] - i.stock > 1e-9) return { ing: i, need: u[id], have: i.stock }; }
+  return null;
+}
+/* porsi menu yang masih bisa dibuat setelah dikurangi pemakaian item lain */
+function portionsLeft(menu, items) {
+  const u = usageOf(items || []);
+  let min = Infinity;
+  for (const [id, q] of menu.recipe) {
+    const i = ingById(id); if (!i || q <= 0) continue;
+    min = Math.min(min, Math.floor((i.stock - (u[id] || 0)) / q + 1e-9));
+  }
+  return min === Infinity ? 0 : Math.max(0, min);
+}
+/* saldo akun kas/bank untuk validasi pembayaran */
+const cashAccount = method => (method === 'tunai' ? '1-101' : '1-102');
 function stockStatus(i) {
   if (i.stock <= 0) return 'habis';
   if (i.stock < i.min) return 'menipis';
@@ -291,11 +324,8 @@ function recordSale(t, bill, pay, opts = {}) {
   });
   const no = nextNo('INV', t, true);
   // kurangi stok bahan sesuai resep
-  const usage = {};
-  for (const it of bill.items) {
-    const m = menuById(it.mid);
-    for (const [id, q] of m.recipe) usage[id] = (usage[id] || 0) + q * it.qty;
-  }
+  const usage = usageOf(bill.items);
+  const used = {};
   for (const id in usage) {
     const ing = ingById(id);
     const val = usage[id] * ing.avg;
@@ -305,6 +335,7 @@ function recordSale(t, bill, pay, opts = {}) {
       a.qty += usage[id]; a.value += val;
     } else {
       addMove(t, id, 'jual', -usage[id], -val, no, 'Pemakaian penjualan');
+      used[id] = [usage[id], Math.round(val)];
     }
   }
   const sale = {
@@ -312,7 +343,9 @@ function recordSale(t, bill, pay, opts = {}) {
     items: lines, discPct: bill.discPct || 0, ...c, cogs: Math.round(cogs),
     method: pay.method, paid: pay.paid || c.total, change: Math.max(0, (pay.paid || c.total) - c.total),
     payRef: pay.ref || '', cashier: opts.cashier || S.session.cashier, discBy: bill.discBy || '',
+    status: 'paid',
   };
+  if (!opts.aggregate) sale.usage = used;
   S.sales.push(sale);
   if (!opts.skipJournal) journalSale(t, no, `Penjualan ${no}`, [sale]);
   return sale;
@@ -387,19 +420,26 @@ function receivePO(t, po, recv, receiver) {
 function payPO(t, po, amount, method) {
   const acc = method === 'tunai' ? '1-101' : '1-102';
   const amt = Math.min(amount, (po.recvValue || 0) - po.paid);
-  if (amt <= 0) return;
+  if (amt <= 0) return 0;
   po.paid += amt;
   if (po.paid >= (po.recvValue || 0) && po.status === 'diterima') po.status = 'lunas';
   postJournal(t, nextNo('BKK', t), `Pembayaran ${po.no} — ${supById(po.sup).name}`, 'ap', [
     { acc: '2-101', d: amt }, { acc, c: amt },
   ]);
+  return amt;
+}
+/* ubah PO yang masih draft */
+function updatePO(po, supId, lines, note) {
+  po.sup = supId; po.note = note || '';
+  po.lines = lines.map(l => ({ ing: l.ing, qty: l.qty, price: Math.round(l.price), recv: 0 }));
+  po.total = po.lines.reduce((s, l) => s + l.qty * l.price, 0);
 }
 function poOutstanding(po) { return Math.max(0, (po.recvValue || 0) - po.paid); }
 
 /* ---------- Biaya operasional ---------- */
 function recordExpense(t, acc, desc, amount, method) {
   const no = nextNo('BKK', t);
-  S.expenses.push({ no, t, acc, desc, amount: Math.round(amount), method });
+  S.expenses.push({ no, t, acc, desc, amount: Math.round(amount), method, status: 'aktif' });
   postJournal(t, no, desc, 'expense', [{ acc, d: amount }, { acc: method === 'tunai' ? '1-101' : '1-102', c: amount }]);
 }
 
@@ -410,7 +450,7 @@ function recordWaste(t, ingId, qty, reason, by) {
   ing.stock -= qty;
   const no = nextNo('WST', t);
   addMove(t, ingId, 'waste', -qty, -val, no, reason);
-  S.wastes.push({ no, t, ing: ingId, qty, value: Math.round(val), reason, by: by || 'Chef Wayan' });
+  S.wastes.push({ no, t, ing: ingId, qty, value: Math.round(val), reason, by: by || 'Chef Wayan', status: 'aktif' });
   postJournal(t, no, `Bahan rusak: ${ing.name} (${reason})`, 'waste', [{ acc: '5-102', d: val }, { acc: '1-104', c: val }]);
 }
 function postOpname(t, counts, by, note) {
@@ -428,11 +468,68 @@ function postOpname(t, counts, by, note) {
     if (val > 0) plus += val; else minus += -val;
   }
   S.opnames.push({ no, t, by: by || 'Joko Susilo', note: note || '', lines, net: Math.round(plus - minus) });
-  postJournal(t, no, 'Penyesuaian stok opname', 'opname', [
+  if (Math.round(plus) || Math.round(minus)) postJournal(t, no, 'Penyesuaian stok opname', 'opname', [
     { acc: '5-102', d: minus }, { acc: '1-104', c: minus },
     { acc: '1-104', d: plus }, { acc: '5-102', c: plus },
   ]);
 }
+
+/* ---------- Pembatalan (void) ----------
+   Dokumen tidak dihapus; dibuat mutasi & jurnal pembalik agar laporan tetap terjejak. */
+function returnStock(t, ingId, qty, value, type, ref, note) {
+  const ing = ingById(ingId);
+  const curVal = Math.max(0, ing.stock) * ing.avg;
+  const newStock = Math.max(0, ing.stock) + qty;
+  if (newStock > 0) ing.avg = (curVal + value) / newStock;
+  ing.stock += qty;
+  addMove(t, ingId, type, qty, value, ref, note);
+}
+/* pemakaian bahan transaksi lama yang belum menyimpan rincian: pakai resep saat ini,
+   nilai HPP transaksi dibagi proporsional agar jurnal & nilai stok tetap cocok */
+function saleUsage(sale) {
+  if (sale.usage) return sale.usage;
+  const u = usageOf(sale.items);
+  const ids = Object.keys(u);
+  const w = ids.map(id => u[id] * ingById(id).avg);
+  const tw = w.reduce((a, b) => a + b, 0) || 1;
+  const out = {}; let left = sale.cogs;
+  ids.forEach((id, k) => { const v = k === ids.length - 1 ? left : Math.round(sale.cogs * w[k] / tw); left -= v; out[id] = [u[id], v]; });
+  return out;
+}
+function voidSale(t, sale, reason, by) {
+  if (sale.status === 'void') return null;
+  const no = nextNo('VOID', t);
+  const used = JSON.parse(JSON.stringify(saleUsage(sale)));
+  const ids = Object.keys(used);
+  // selisih pembulatan per bahan disesuaikan ke bahan bernilai terbesar agar total = HPP transaksi
+  const diff = sale.cogs - ids.reduce((a, id) => a + used[id][1], 0);
+  if (ids.length && diff) { const big = ids.reduce((a, id) => (used[id][1] > used[a][1] ? id : a), ids[0]); used[big][1] += diff; }
+  const back = sale.cogs;
+  for (const id of ids) returnStock(t, id, used[id][0], used[id][1], 'void', no, 'Pembatalan ' + sale.no);
+  const acc = (PAY_METHODS.find(p => p.id === sale.method) || PAY_METHODS[0]).acc;
+  postJournal(t, no, `Void ${sale.no}: ${reason}`, 'void', [
+    { acc: '4-101', d: sale.sub }, { acc: '4-102', d: sale.svc }, { acc: '2-102', d: sale.tax },
+    { acc: '4-103', c: sale.disc }, { acc, c: sale.total },
+    { acc: '1-104', d: back }, { acc: '5-101', c: back },
+  ]);
+  Object.assign(sale, { status: 'void', voidNo: no, voidReason: reason, voidBy: by, voidAt: t });
+  return no;
+}
+function voidExpense(t, e, reason, by) {
+  if (e.status === 'batal') return;
+  postJournal(t, 'BTL-' + e.no, `Batal ${e.no}: ${reason}`, 'expense', [{ acc: cashAccount(e.method), d: e.amount }, { acc: e.acc, c: e.amount }]);
+  Object.assign(e, { status: 'batal', voidReason: reason, voidBy: by, voidAt: t });
+}
+function voidWaste(t, w, reason, by) {
+  if (w.status === 'batal') return;
+  returnStock(t, w.ing, w.qty, w.value, 'waste', 'BTL-' + w.no, 'Batal ' + w.no + ': ' + reason);
+  postJournal(t, 'BTL-' + w.no, `Batal ${w.no}: ${reason}`, 'waste', [{ acc: '1-104', d: w.value }, { acc: '5-102', c: w.value }]);
+  Object.assign(w, { status: 'batal', voidReason: reason, voidBy: by, voidAt: t });
+}
+/* data master hanya boleh dihapus bila belum pernah dipakai transaksi */
+function menuInUse(id) { return S.sales.some(s => s.items.some(l => l.mid === id)) || S.bills.some(b => b.items.some(i => i.mid === id)); }
+function ingredientInUse(id) { return S.menu.some(m => m.recipe.some(r => r[0] === id)) || S.moves.some(m => m.ing === id) || S.pos.some(p => p.lines.some(l => l.ing === id)); }
+function supplierInUse(id) { return S.pos.some(p => p.sup === id) || S.ingredients.some(i => i.sup === id); }
 
 /* ---------- Saldo akun ---------- */
 function accBalance(code, from, to) {
@@ -469,8 +566,9 @@ function buildDemo(now) {
       ({ id, name, cat, unit, buy, conv, sup, avg: price / conv, lastPrice: price, stock: 0, min: 0, target: 0 })),
     menu: SEED_MENU.map(m => ({ ...m, recipe: m.recipe.map(r => r.slice()), steps: m.steps.slice(), active: true })),
     sales: [], pos: [], grns: [], moves: [], journals: [], expenses: [], opnames: [], wastes: [],
-    tables: [], bills: [], kds: [], seq: {},
+    tables: [], bills: [], kds: [], reservations: [], seq: {},
   };
+  S.suppliers.forEach(x => { x.active = true; });
 
   /* estimasi pemakaian harian → stok minimum & target */
   const itemsPerDay = 215;
@@ -532,7 +630,7 @@ function buildDemo(now) {
     if (dom === 5) recordExpense(day + 11 * 3600000, '6-103', 'Tagihan PLN & PDAM', 3450000, 'transfer');
     if (d % 4 === 1) recordExpense(day + 9 * 3600000, '6-104', 'Isi ulang LPG 12 kg × 3 tabung', 585000, 'tunai');
     if (d % 7 === 2) recordExpense(day + 15 * 3600000, '6-105', 'Iklan Instagram & promosi ojol', 750000, 'transfer');
-    if (d % 7 === 6) recordExpense(day + 21 * 3600000, '6-101', 'Upah pekerja harian & uang makan staf (mingguan)', 2450000, 'tunai');
+    if (d % 7 === 6) recordExpense(day + 22 * 3600000 + 900000, '6-101', 'Upah pekerja harian & uang makan staf (mingguan)', 2450000, 'tunai');
     if (d % 7 === 5) recordExpense(day + 16 * 3600000, '6-106', 'Sabun, tisu, plastik sampah', 320000, 'tunai');
     if (dom === 10) {
       const pb1 = accBalance('2-102');
@@ -588,7 +686,8 @@ function buildDemo(now) {
 
     /* setor kas ke bank (hari sebelumnya) */
     if (!isToday) {
-      const cash = daySales.filter(s => s.method === 'tunai').reduce((s, x) => s + x.total, 0);
+      // setor kelebihan kas di atas modal laci (Rp 3 juta) agar kas tidak pernah minus
+      const cash = accBalance('1-101') - 3000000;
       if (cash > 0) postJournal(day + 22 * 3600000 + 1800000, 'STR-' + ymd(day), 'Setor kas harian ke Bank BCA', 'transfer', [{ acc: '1-102', d: cash }, { acc: '1-101', c: cash }]);
     }
 

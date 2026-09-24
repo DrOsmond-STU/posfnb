@@ -62,7 +62,7 @@ Hal-hal di bawah ini sengaja disederhanakan di purwarupa dan **wajib** diganti d
 
 | Area | Purwarupa | Produksi |
 |---|---|---|
-| Penyimpanan | `localStorage` peramban, data demo dibuat ulang setiap hari | MySQL di server, data permanen |
+| Penyimpanan | `localStorage` peramban (per perangkat), tersimpan sampai "Atur ulang data demo" | MySQL di server, data permanen dan dipakai bersama |
 | Autentikasi | Diperiksa di peramban, hash SHA-256 bergaram | Diperiksa di server, Argon2id, sesi cookie |
 | Izin | Disembunyikan/dikunci di UI | Ditegakkan di setiap endpoint |
 | Jurnal penjualan historis | Satu jurnal rekap per hari (data simulasi) | Satu jurnal per transaksi |
