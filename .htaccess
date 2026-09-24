@@ -1,8 +1,10 @@
-# Racik POS — aturan akses situs purwarupa
-# Dokumentasi & berkas internal tidak boleh dibuka publik (403 Forbidden).
+# Racik POS — aturan akses situs
+# Aplikasi (index.html + assets/) dan API (api/index.php) boleh diakses publik.
+# Dokumentasi, kode sumber API, migrasi, dan berkas internal: 403 Forbidden.
 
 # Jangan tampilkan daftar isi folder.
 Options -Indexes
+DirectoryIndex index.html
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
@@ -10,17 +12,30 @@ Options -Indexes
   # Berkas & folder tersembunyi (.git, .htaccess, .env, …), kecuali verifikasi SSL.
   RewriteRule (^|/)\.(?!well-known/) - [F,L]
 
-  # Folder dokumentasi pengembangan.
-  RewriteRule ^docs(/|$) - [F,L]
+  # Folder dokumentasi & alat pengembangan.
+  RewriteRule ^(docs|tools)(/|$) - [F,L]
 
-  # Semua berkas Markdown (README.md, dll.) dan konfigurasi PHP.
-  RewriteRule \.md$ - [F,L,NC]
+  # Kode sumber, skrip CLI, dan migrasi API tidak boleh dibuka langsung.
+  RewriteRule ^api/(src|bin|migrations)(/|$) - [F,L]
+
+  # Semua berkas Markdown, SQL, dan konfigurasi PHP.
+  RewriteRule \.(md|sql)$ - [F,L,NC]
   RewriteRule (^|/)php\.ini$ - [F,L,NC]
+
+  # Semua permintaan /api/* ditangani satu front controller.
+  RewriteRule ^api/index\.php$ - [L]
+  RewriteRule ^api(/.*)?$ api/index.php [L,QSA]
 </IfModule>
 
 # Lapis kedua bila mod_rewrite tidak aktif.
 <IfModule mod_authz_core.c>
-  <FilesMatch "(?i)\.(md|ini)$">
+  <FilesMatch "(?i)\.(md|ini|sql|log)$">
     Require all denied
   </FilesMatch>
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>

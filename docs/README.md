@@ -4,6 +4,8 @@ Dokumen ini adalah acuan tim sebelum membangun Racik POS versi produksi, yaitu a
 
 Purwarupa interaktif sudah tersedia di <https://posfnb.semestateknologiutama.com/>. Kode purwarupa ada di folder `assets/` pada repositori ini. Setiap perhitungan dan aturan di dokumen ini sudah dicocokkan dengan purwarupa tersebut. Bila keduanya berbeda, **dokumen ini yang berlaku**.
 
+> **Status implementasi (24 Sep 2026):** tahap pertama backend sudah berjalan di server. Autentikasi, sesi, peran & izin, pengelolaan pengguna, persetujuan PIN, dan log aktivitas kini memakai **PHP + MySQL** (folder `api/`). Stack ini dipilih karena hosting cPanel saat ini tidak menjalankan Composer atau build step. Tabel dan aturannya mengikuti [03](03-peran-hak-akses.md), [07](07-skema-database.md), dan [08](08-spesifikasi-api.md). Modul operasional (penjualan, stok, pembelian, jurnal) masih memakai data contoh di browser sampai dipindahkan ke API sesuai [rencana pengembangan](11-rencana-pengembangan.md). Cara instalasi ada di `README.md` di akar repositori.
+
 | Atribut | Nilai |
 |---|---|
 | Versi dokumen | 1.0.1 |

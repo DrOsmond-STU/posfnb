@@ -1,21 +1,40 @@
-# Racik POS: purwarupa UI/UX POS Resto & F&B
+# Racik POS: POS Resto & F&B
 
-Purwarupa interaktif aplikasi Point of Sale untuk restoran dan usaha F&B. Alurnya lengkap, mulai dari pembelian bahan, standar menu dan resep, penjualan di kasir, sampai laporan keuangan dan laporan persediaan.
+Aplikasi Point of Sale untuk restoran dan usaha F&B. Alurnya lengkap, mulai dari pembelian bahan, standar menu dan resep, penjualan di kasir, sampai laporan keuangan dan laporan persediaan.
 
-Aplikasi ini murni HTML, CSS, dan JavaScript tanpa build step dan tanpa backend. Semua data demo dibuat otomatis di browser.
+- **Autentikasi & hak akses berjalan di server** (PHP + MySQL, folder `api/`): akun, kata sandi, PIN, sesi, peran, izin, dan log aktivitas disimpan di basis data dan diperiksa di setiap permintaan.
+- **Data operasional** (penjualan, stok, pembelian, jurnal) masih disimpan di browser (localStorage) sebagai data contoh. Pemindahan modul-modul ini ke API mengikuti rencana di [`docs/11-rencana-pengembangan.md`](docs/11-rencana-pengembangan.md).
 
 ## Dokumentasi pengembangan
 
 Spesifikasi lengkap untuk membangun versi produksi ada di folder [`docs/`](docs/README.md): ringkasan produk, kebutuhan fungsional, peran & hak akses, alur bisnis, aturan perhitungan & akuntansi, arsitektur, skema basis data, spesifikasi API, kebutuhan non-fungsional, panduan UI, rencana pengembangan, dan daftar keputusan terbuka.
 
-## Cara menjalankan
+## Kebutuhan server
+
+- PHP 7.4 atau lebih baru dengan ekstensi `pdo_mysql` (Argon2id dipakai bila tersedia, selain itu bcrypt).
+- MySQL 5.7+ / MariaDB 10.3+.
+- Apache dengan `mod_rewrite` (hosting cPanel biasa). Tidak perlu Composer atau build step.
+
+## Instalasi
+
+1. Buat basis data dan user MySQL.
+2. Salin `api/config.example.php` ke **luar** document root, yaitu `<home>/posfnb-config/config.php` (satu tingkat di atas folder situs). Isi kredensial DB, `trusted_origin`, `app_secret` acak, dan akun Pemilik pertama. Lokasi lain bisa ditunjuk lewat variabel lingkungan `POSFNB_CONFIG`.
+3. Jalankan migrasi dari terminal atau cron:
+   ```bash
+   php api/bin/migrate.php
+   ```
+   Perintah ini membuat tabel, peran bawaan, dan akun Pemilik pertama. Aman dijalankan berulang.
+4. Masuk dengan akun Pemilik. Sistem langsung meminta kata sandi baru. Setelah itu tambahkan pengguna lain di menu **Pengguna & Akses**.
+
+`.htaccess` mengarahkan semua `/api/*` ke `api/index.php`. Folder `docs/`, `tools/`, `api/src`, `api/bin`, `api/migrations`, serta berkas `.md`, `.sql`, dan berkas tersembunyi diblokir (403).
+
+## Menjalankan di komputer lokal
 
 ```bash
-python3 -m http.server 8000
-# buka http://localhost:8000
+POSFNB_CONFIG=/path/ke/config.php php api/bin/migrate.php
+POSFNB_CONFIG=/path/ke/config.php php -S localhost:8766 tools/dev-router.php
+# buka http://localhost:8766  (isi cookie_secure => false dan trusted_origin => 'http://localhost:8766')
 ```
-
-Bisa juga langsung membuka `index.html` di browser.
 
 ## Modul
 
@@ -38,33 +57,51 @@ Bisa juga langsung membuka `index.html` di browser.
 
 ## Masuk & hak akses
 
-Aplikasi dibuka dengan layar masuk. Ada dua cara masuk: **email + kata sandi**, atau **PIN kasir 6 digit** dengan papan angka untuk berganti kasir dengan cepat. Semua akun demo memakai kata sandi `demo1234`.
+Ada dua cara masuk: **email + kata sandi**, atau **PIN kasir 6 digit** untuk berganti kasir dengan cepat. Tidak ada akun demo; semua akun dibuat Pemilik di menu **Pengguna & Akses**.
 
-| Peran | Akun demo | PIN | Modul |
-|---|---|---|---|
-| Pemilik | andi@dapurnusantara.id | 111111 | Semua, termasuk Pengguna & Akses |
-| Manajer Outlet | sari@dapurnusantara.id | 222222 | Semua kecuali Pengguna & Akses; bisa menyetujui diskon |
-| Kasir | rina@ / dimas@dapurnusantara.id | 123456 / 654321 | Kasir, Meja, Layar Dapur, riwayat transaksi sendiri |
-| Kepala Dapur | wayan@dapurnusantara.id | 333333 | Layar Dapur, Resep, Persediaan (opname & waste) |
-| Staf Gudang | joko@dapurnusantara.id | 444444 | Pembelian, Pemasok, Persediaan |
-| Akuntan | maya@dapurnusantara.id | — | Dasbor, Kas & Biaya, semua laporan, bayar pemasok |
-| (nonaktif) | budi@dapurnusantara.id | — | Tidak bisa masuk |
+| Peran bawaan | Modul |
+|---|---|
+| Pemilik | Semua, termasuk Pengguna & Akses (izin tidak bisa dikurangi) |
+| Manajer Outlet | Semua kecuali Pengguna & Akses; bisa menyetujui diskon & void |
+| Kasir | Kasir, Meja, Layar Dapur, riwayat transaksi sendiri |
+| Kepala Dapur | Layar Dapur, Resep, Persediaan (opname & waste) |
+| Staf Gudang | Pembelian, Pemasok, Persediaan |
+| Akuntan | Dasbor, Kas & Biaya, semua laporan, bayar pemasok |
 
-- **Menu mengikuti peran:** bilah sisi hanya menampilkan modul yang diizinkan. Membuka URL modul lain menampilkan halaman "tidak punya akses", dan tombol aksi yang tidak diizinkan tampil terkunci.
-- **Diskon butuh persetujuan:** kasir yang memilih diskon harus meminta PIN Manajer atau Pemilik. Nama penyetujunya tercatat di transaksi.
-- **Pengguna & Akses** (khusus Pemilik) berisi:
-  - daftar pengguna: tambah, ubah peran, atur ulang kata sandi & PIN, aktif/nonaktif;
-  - matriks hak akses per peran, yang bisa dicentang langsung;
-  - log aktivitas: masuk, gagal masuk, akses ditolak, persetujuan diskon, perubahan hak akses.
-- **Keamanan dasar:**
-  - kata sandi & PIN disimpan sebagai hash SHA-256 bergaram;
-  - 5 kali gagal akan mengunci akun selama 60 detik;
-  - sesi terkunci otomatis setelah 30 menit tidak aktif;
-  - "Ingat saya" menjaga sesi 7 hari (tanpa centang, sesi berakhir saat tab ditutup);
-  - tombol **Kunci layar** untuk berganti kasir;
-  - hanya Pemilik yang bisa menunjuk Pemilik lain, dan minimal satu Pemilik harus tetap aktif.
+**Keamanan (ditegakkan di server):**
+- Kata sandi & PIN di-hash dengan Argon2id. Server tidak pernah menyimpan atau mengirim nilai aslinya.
+- Sesi disimpan di tabel `sessions`. Browser hanya memegang token acak di cookie `HttpOnly`, `Secure`, `SameSite=Lax`, yang di basis data disimpan sebagai hash SHA-256.
+- Setiap perubahan data memerlukan token CSRF dan asal (Origin) yang sesuai `trusted_origin`.
+- Batas percobaan:
+  - 5 kali gagal per akun → akun dikunci 60 detik;
+  - 3 kali terkunci dalam 1 jam → dikunci 15 menit;
+  - 20 kali gagal per alamat IP → IP ditahan 5 menit.
+- **PIN hanya berlaku di perangkat tepercaya**, yaitu perangkat yang pernah dipakai masuk dengan email + kata sandi (cookie perangkat bertanda tangan HMAC, 180 hari).
+- Sesi terkunci otomatis setelah 30 menit tidak aktif. Tombol **Kunci layar** tersedia, dan membuka kunci memerlukan PIN atau kata sandi pemilik sesi.
+- "Ingat saya" menjaga sesi 7 hari; tanpa centang, sesi berakhir saat browser ditutup (maksimal 12 jam).
+- Pengguna baru dan kata sandi yang diatur ulang **wajib diganti** saat pertama masuk.
+- Mengganti kata sandi mengakhiri sesi lain milik pengguna itu. Menonaktifkan akun langsung mengakhiri semua sesinya.
+- Hanya Pemilik yang bisa menunjuk Pemilik lain, dan minimal satu Pemilik harus tetap aktif.
+- Persetujuan diskon, void, dan batal bill memakai PIN penyetuju yang diverifikasi server.
+- Setiap aksi penting tercatat di `audit_logs` beserta alamat IP.
 
-> Ini autentikasi purwarupa di sisi peramban. Siapa pun yang membuka DevTools bisa melewatinya. Untuk produksi, verifikasi kata sandi, sesi, dan pengecekan izin wajib dijalankan di server (mis. PHP/Laravel + MySQL di hosting yang sama).
+## API autentikasi
+
+| Metode | Path | Keterangan |
+|---|---|---|
+| GET | `/api/health` | Cek aplikasi & koneksi DB |
+| GET | `/api/auth/me` | Pengguna, izin, daftar peran, token CSRF (423 bila layar terkunci) |
+| POST | `/api/auth/login` | `{email, password, remember}` |
+| GET | `/api/auth/pin-users` | Daftar pengguna ber-PIN (hanya perangkat tepercaya) |
+| POST | `/api/auth/pin` | `{user_id, pin}` |
+| POST | `/api/auth/lock` · `/api/auth/unlock` · `/api/auth/logout` | Kunci layar, buka kunci (`{pin}` atau `{password}`), keluar |
+| PUT | `/api/auth/me/credentials` | Ganti kata sandi/PIN sendiri |
+| GET/POST | `/api/auth/approvers?perm=` · `/api/auth/approve` | Persetujuan dengan PIN |
+| GET/POST/PUT | `/api/users`, `/api/users/{id}` | Kelola pengguna (izin `pengguna.kelola`) |
+| GET/PUT | `/api/roles`, `/api/roles/{id}/permissions` | Matriks izin per peran |
+| GET | `/api/audit-logs?limit=` | Log aktivitas |
+
+Galat selalu berbentuk `{"error": {"code", "message", "details"}}`.
 
 ## Alur data yang saling terhubung
 
@@ -81,7 +118,13 @@ assets/style.css         tema & komponen (token warna di :root)
 assets/icons.js          ikon Lucide (ISC) yang dibundel lokal
 assets/data.js           master data, mesin transaksi & akuntansi, simulasi 30 hari
 assets/ui.js             router, modal, toast, format Rupiah, grafik SVG
-assets/auth.js           layar masuk, sesi, peran & izin, Pengguna & Akses, log aktivitas
+assets/auth.js           klien API: layar masuk, PIN, kunci layar, izin di UI, Pengguna & Akses
+api/index.php            front controller & daftar rute API
+api/src/                 Auth, Users, Permissions, RateLimit, Audit, Db, Http
+api/migrations/          skema MySQL
+api/bin/migrate.php      migrasi + peran bawaan + Pemilik pertama (CLI)
+api/config.example.php   contoh konfigurasi (salin ke luar document root)
+tools/dev-router.php     router untuk server PHP bawaan (lokal)
 assets/views-ops.js      Dasbor, Kasir, Meja, Layar Dapur, Riwayat Penjualan
 assets/views-stock.js    Resep, Pemasok, Pembelian, Persediaan
 assets/views-finance.js  Kas & Biaya, Laporan, Pengaturan

@@ -358,7 +358,7 @@ ACT['po-recv'] = el => {
       ${p.lines.map((l, i) => { const ing = ingById(l.ing); const rem = Math.max(0, l.qty - l.recv); return `<tr><td class="strong">${esc(ing.name)}<div class="sub">${ing.buy} = ${nf.format(ing.conv)} ${ing.unit}</div></td><td class="num">${fmtBuy(ing, l.qty)}</td><td class="num">${fmtBuy(ing, l.recv)}</td>
         <td><input class="input sm num grn-q" data-i="${i}" inputmode="decimal" value="${rem}" aria-label="Jumlah diterima"></td><td><input class="input sm num grn-p" data-i="${i}" inputmode="numeric" value="${l.price}" aria-label="Harga aktual"></td></tr>`; }).join('')}
       </tbody></table></div>
-      <div class="form-grid"><div class="field"><label for="grn-by">Diterima oleh</label><select class="input" id="grn-by">${opts(activeUsers().map(u => [u.name, u.name + ' · ' + roleById(u.role).name]), currentUser().name)}</select></div>
+      <div class="form-grid"><div class="field"><label for="grn-by">Diterima oleh</label><select class="input" id="grn-by">${opts(activeUsers().map(u => [u.name, u.name + ' · ' + u.role_name]), currentUser().name)}</select></div>
       <div class="field"><label for="grn-sj">No. surat jalan pemasok</label><input class="input" id="grn-sj" placeholder="mis. SJ-0925/118"></div></div>`,
     foot: `<button class="btn" data-act="po-view" data-no="${esc(p.no)}">Kembali</button><button class="btn btn-primary" data-act="grn-post" data-no="${esc(p.no)}">${icon('package-check', 16)} Posting penerimaan</button>`,
   });

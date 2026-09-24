@@ -307,7 +307,7 @@ function paintChrome() {
   const u = currentUser(); if (!u) return;
   document.getElementById('avatar').textContent = initials(u.name);
   document.getElementById('u-name').textContent = u.name;
-  document.getElementById('u-role').textContent = roleById(u.role).name + ' · ' + S.settings.branch.replace('Cabang ', '');
+  document.getElementById('u-role').textContent = u.role_name + ' · ' + S.settings.branch.replace('Cabang ', '');
 }
 
 let kdsTimer = null;
@@ -325,9 +325,8 @@ function enterApp() {
   render();
   window.scrollTo(0, 0);
 }
-function boot() {
+async function boot() {
   loadState();
-  loadAuth();
   try {
     if (localStorage.getItem('racikpos-collapsed')) document.getElementById('app').classList.add('collapsed');
   } catch (e) { /* abaikan */ }
@@ -340,7 +339,12 @@ function boot() {
     render();
     window.scrollTo(0, 0);
   });
-  if (currentUser()) enterApp(); else showLogin();
+  // status sesi diambil dari server (cookie HttpOnly), bukan dari penyimpanan browser
+  document.getElementById('login').hidden = false;
+  document.getElementById('login').innerHTML = '<div class="login-boot">Memeriksa sesi…</div>';
+  const state = await initAuth();
+  if (state === 'app') { enterApp(); if (currentUser().must_change_password) forceChangePassword(); }
+  else showLogin();
   // perbarui timer layar dapur tiap 30 detik
   kdsTimer = setInterval(() => { if (current === 'dapur' && currentUser() && !modalEl()) render(); }, 30000);
 }

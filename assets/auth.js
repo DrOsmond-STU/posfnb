@@ -1,54 +1,14 @@
 /* =========================================================================
-   Racik POS — autentikasi & hak akses berbasis peran (RBAC)
-   Purwarupa sisi peramban: akun, peran, dan log disimpan di localStorage.
-   Kata sandi & PIN disimpan sebagai hash SHA-256 bergaram, bukan teks asli.
-   Untuk produksi, verifikasi harus dipindah ke server.
+   Racik POS — autentikasi & hak akses (klien)
+   Semua keputusan keamanan dibuat server (api/): kata sandi & PIN diverifikasi
+   dengan hash Argon2id, sesi disimpan di MySQL, izin dicek di setiap endpoint.
+   Berkas ini hanya menampilkan layar masuk dan menyembunyikan menu sesuai izin.
    ========================================================================= */
 
-const AUTH_KEY = 'racikpos-auth-v1';
-const SESS_KEY = 'racikpos-session';
+const API_BASE = 'api/';
 const IDLE_MS = 30 * 60000;
-const MAX_TRY = 5, LOCK_MS = 60000;
 
-/* ---------- SHA-256 (sinkron, tanpa pustaka) ---------- */
-const sha256 = (() => {
-  const K = [], H0 = [];
-  const isPrime = x => { for (let i = 2; i * i <= x; i++) if (x % i === 0) return false; return true; };
-  for (let n = 2, c = 0; c < 64; n++) {
-    if (!isPrime(n)) continue;
-    if (c < 8) H0[c] = (Math.pow(n, 1 / 2) * 4294967296) | 0;
-    K[c++] = (Math.pow(n, 1 / 3) * 4294967296) | 0;
-  }
-  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
-  return str => {
-    const bytes = new TextEncoder().encode(str);
-    const len = bytes.length, total = ((len + 9 + 63) >> 6) << 6;
-    const buf = new Uint8Array(total); buf.set(bytes); buf[len] = 0x80;
-    const dv = new DataView(buf.buffer);
-    dv.setUint32(total - 4, (len * 8) >>> 0);
-    dv.setUint32(total - 8, Math.floor(len / 536870912));
-    const H = H0.slice(), W = new Int32Array(64);
-    for (let i = 0; i < total; i += 64) {
-      for (let t = 0; t < 16; t++) W[t] = dv.getInt32(i + t * 4);
-      for (let t = 16; t < 64; t++) {
-        const s0 = rotr(W[t - 15], 7) ^ rotr(W[t - 15], 18) ^ (W[t - 15] >>> 3);
-        const s1 = rotr(W[t - 2], 17) ^ rotr(W[t - 2], 19) ^ (W[t - 2] >>> 10);
-        W[t] = (W[t - 16] + s0 + W[t - 7] + s1) | 0;
-      }
-      let [a, b, c, d, e, f, g, h] = H;
-      for (let t = 0; t < 64; t++) {
-        const t1 = (h + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + W[t]) | 0;
-        const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
-        h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
-      }
-      [a, b, c, d, e, f, g, h].forEach((v, k) => { H[k] = (H[k] + v) | 0; });
-    }
-    return H.map(x => (x >>> 0).toString(16).padStart(8, '0')).join('');
-  };
-})();
-const hashSecret = (uid, kind, secret) => sha256(`racikpos:${uid}:${kind}:${secret}`);
-
-/* ---------- Katalog izin ---------- */
+/* ---------- Katalog izin (label untuk antarmuka) ---------- */
 const ACTION_PERMS = [
   ['kasir.bayar', 'Terima pembayaran', 'Kasir'],
   ['kasir.diskon', 'Beri diskon tanpa persetujuan', 'Kasir'],
@@ -72,97 +32,66 @@ const permLabel = p => {
 };
 const ALL_MODULES = () => NAV.flatMap(g => g.items.map(i => i[0]));
 
-const ROLE_SEED = [
-  { id: 'owner', name: 'Pemilik', tone: 'bad', locked: true, desc: 'Akses penuh ke semua modul dan pengaturan.', perms: ['*'] },
-  { id: 'manajer', name: 'Manajer Outlet', tone: 'gold', desc: 'Menjalankan operasional harian, menyetujui diskon, dan membaca semua laporan.',
-    perms: ['m:dashboard', 'm:kasir', 'm:meja', 'm:dapur', 'm:penjualan', 'm:menu', 'm:pembelian', 'm:pemasok', 'm:persediaan', 'm:kas', 'm:lap-penjualan', 'm:lap-keuangan', 'm:lap-persediaan', 'm:pengaturan',
-      'kasir.bayar', 'kasir.diskon', 'penjualan.semua', 'penjualan.void', 'menu.edit', 'po.buat', 'po.terima', 'po.bayar', 'stok.bahan', 'stok.opname', 'stok.waste', 'kas.catat', 'pengaturan.ubah'] },
-  { id: 'kasir', name: 'Kasir', tone: 'info', desc: 'Mencatat pesanan dan menerima pembayaran. Diskon perlu PIN manajer.',
-    perms: ['m:kasir', 'm:meja', 'm:dapur', 'm:penjualan', 'kasir.bayar'] },
-  { id: 'dapur', name: 'Kepala Dapur', tone: 'ok', desc: 'Mengelola layar dapur, standar resep, stok opname, dan bahan rusak.',
-    perms: ['m:dapur', 'm:menu', 'm:persediaan', 'm:lap-persediaan', 'menu.edit', 'stok.opname', 'stok.waste'] },
-  { id: 'gudang', name: 'Staf Gudang', tone: '', desc: 'Membuat PO, menerima barang, dan menjaga data persediaan.',
-    perms: ['m:pembelian', 'm:pemasok', 'm:persediaan', 'po.buat', 'po.terima', 'stok.bahan', 'stok.opname', 'stok.waste'] },
-  { id: 'akuntan', name: 'Akuntan', tone: 'warn', desc: 'Mencatat kas & biaya, membayar pemasok, dan menyusun laporan.',
-    perms: ['m:dashboard', 'm:penjualan', 'm:pembelian', 'm:pemasok', 'm:kas', 'm:lap-penjualan', 'm:lap-keuangan', 'm:lap-persediaan', 'penjualan.semua', 'po.bayar', 'kas.catat'] },
-];
-const USER_SEED = [
-  ['U01', 'Andi Pratama', 'andi@dapurnusantara.id', 'owner', '111111', true],
-  ['U02', 'Sari Wulandari', 'sari@dapurnusantara.id', 'manajer', '222222', true],
-  ['U03', 'Rina Kartika', 'rina@dapurnusantara.id', 'kasir', '123456', true],
-  ['U04', 'Dimas Saputra', 'dimas@dapurnusantara.id', 'kasir', '654321', true],
-  ['U05', 'Wayan Sudarma', 'wayan@dapurnusantara.id', 'dapur', '333333', true],
-  ['U06', 'Joko Susilo', 'joko@dapurnusantara.id', 'gudang', '444444', true],
-  ['U07', 'Maya Lestari', 'maya@dapurnusantara.id', 'akuntan', '', true],
-  ['U08', 'Budi Santoso', 'budi@dapurnusantara.id', 'kasir', '777777', false],
-];
-const DEMO_PASSWORD = 'demo1234';
+/* ---------- Status sesi ---------- */
+let ME = null;       // { user, permissions, roles, csrf } dari server
+let LOCKED = null;   // pengguna yang layarnya terkunci
+let CSRF = '';
+let STAFF = [];      // staf aktif: { id, name, role_name }
 
-/* ---------- Penyimpanan ---------- */
-let AUTH = null;
-let SESSION = null;
-function seedAuth() {
-  return {
-    ver: 1,
-    roles: ROLE_SEED.map(r => ({ ...r, perms: r.perms.slice() })),
-    users: USER_SEED.map(([id, name, email, role, pin, active]) => ({
-      id, name, email, role, active, lastLogin: null,
-      pw: hashSecret(id, 'pw', DEMO_PASSWORD), pin: pin ? hashSecret(id, 'pin', pin) : null,
-    })),
-    audit: [], attempts: {},
-  };
-}
-function loadAuth() {
-  try { const raw = localStorage.getItem(AUTH_KEY); if (raw) { const a = JSON.parse(raw); if (a && a.ver === 1) AUTH = a; } } catch (e) { /* abaikan */ }
-  if (!AUTH) { AUTH = seedAuth(); saveAuth(); }
-  AUTH.migrations = AUTH.migrations || [];
-  if (!AUTH.migrations.includes('void-perm')) {
-    const m = AUTH.roles.find(r => r.id === 'manajer');
-    if (m && !m.perms.includes('penjualan.void')) m.perms.push('penjualan.void');
-    AUTH.migrations.push('void-perm'); saveAuth();
-  }
-  SESSION = readSession();
-}
-function saveAuth() { try { localStorage.setItem(AUTH_KEY, JSON.stringify(AUTH)); } catch (e) { /* abaikan */ } }
-function readSession() {
-  for (const store of ['localStorage', 'sessionStorage']) {
-    try {
-      const s = JSON.parse(window[store].getItem(SESS_KEY) || 'null');
-      if (s && s.exp > Date.now() && AUTH.users.some(u => u.id === s.uid && u.active)) return s;
-    } catch (e) { /* abaikan */ }
-  }
-  return null;
-}
-function writeSession(uid, remember) {
-  SESSION = { uid, exp: Date.now() + (remember ? 7 * DAY : 12 * 3600000), at: Date.now() };
-  clearSession(true);
-  try { (remember ? localStorage : sessionStorage).setItem(SESS_KEY, JSON.stringify(SESSION)); } catch (e) { /* sesi hanya di memori */ }
-}
-function clearSession(keepMemory) {
-  try { localStorage.removeItem(SESS_KEY); } catch (e) { /* abaikan */ }
-  try { sessionStorage.removeItem(SESS_KEY); } catch (e) { /* abaikan */ }
-  if (!keepMemory) SESSION = null;
-}
-
-const userById = id => AUTH.users.find(u => u.id === id);
-const roleById = id => AUTH.roles.find(r => r.id === id);
-const currentUser = () => (SESSION ? userById(SESSION.uid) : null);
-const activeUsers = () => AUTH.users.filter(u => u.active);
-const initials = n => n.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase();
-function can(perm, user) {
-  const u = user || currentUser(); if (!u) return false;
-  const r = roleById(u.role); if (!r) return false;
-  return r.perms.includes('*') || r.perms.includes(perm);
+const currentUser = () => (ME ? ME.user : null);
+const initials = n => String(n || '').split(/\s+/).filter(Boolean).map(x => x[0]).join('').slice(0, 2).toUpperCase();
+const roleById = id => ((ME && ME.roles) || []).find(r => r.id === id) || { id, name: id, tone: '', desc: '' };
+const allRoles = () => (ME && ME.roles) || [];
+const activeUsers = () => STAFF;
+function can(perm) {
+  if (!ME) return false;
+  return ME.permissions.includes('*') || ME.permissions.includes(perm);
 }
 const canView = key => can('m:' + key);
 const firstAllowed = () => ALL_MODULES().find(canView) || 'dashboard';
-const rolePill = id => { const r = roleById(id); return r ? `<span class="pill ${r.tone}">${esc(r.name)}</span>` : ''; };
+const rolePill = id => { const r = roleById(id); return `<span class="pill ${r.tone || ''}">${esc(r.name)}</span>`; };
 
-function audit(event, detail, uid) {
-  const u = uid ? userById(uid) : currentUser();
-  AUTH.audit.unshift({ t: Date.now(), uid: u ? u.id : null, who: u ? u.name : '—', event, detail: detail || '' });
-  AUTH.audit = AUTH.audit.slice(0, 300);
-  saveAuth();
+/* ---------- Klien API ---------- */
+async function api(method, path, body) {
+  const headers = { Accept: 'application/json' };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (CSRF) headers['X-CSRF-Token'] = CSRF;
+  let res;
+  try {
+    res = await fetch(API_BASE + path, { method, credentials: 'same-origin', headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+  } catch (e) {
+    return { status: 0, ok: false, data: { error: { code: 'NETWORK', message: 'Tidak bisa terhubung ke server. Periksa koneksi internet.' } } };
+  }
+  let data;
+  try { data = await res.json(); } catch (e) { data = { error: { code: 'BAD_RESPONSE', message: 'Respons server tidak valid (' + res.status + ').' } }; }
+  // sesi berakhir / terkunci saat aplikasi sedang dipakai
+  if (ME && res.status === 401 && !path.startsWith('auth/')) { ME = null; LOGIN.err = 'Sesi Anda berakhir. Silakan masuk lagi.'; showLogin(); }
+  if (ME && res.status === 423) { goLocked(data.error.details); }
+  return { status: res.status, ok: res.ok, data };
+}
+const apiErr = r => (r.data && r.data.error ? r.data.error.message : 'Terjadi kesalahan.');
+
+async function loadStaff() {
+  const r = await api('GET', 'staff');
+  STAFF = r.ok ? r.data.users : [];
+}
+function setMe(data) {
+  ME = { user: data.user, permissions: data.permissions, roles: data.roles };
+  CSRF = data.csrf;
+  LOCKED = null;
+}
+/* dipanggil saat aplikasi dibuka: 'app' | 'locked' | 'login' */
+async function initAuth() {
+  const r = await api('GET', 'auth/me');
+  if (r.ok) { setMe(r.data); await loadStaff(); return 'app'; }
+  if (r.status === 423) { LOCKED = r.data.error.details.user; CSRF = r.data.error.details.csrf; Object.assign(LOGIN, { mode: 'unlock' }); return 'locked'; }
+  if (r.status === 0 || r.status >= 500) LOGIN.err = apiErr(r);
+  return 'login';
+}
+
+/* log aktivitas dari modul lain (dikirim ke server, tidak menunggu) */
+function audit(event, detail) {
+  if (ME) api('POST', 'audit', { event, detail: detail || '' });
 }
 
 /* ---------- Penjaga aksi ---------- */
@@ -201,65 +130,66 @@ function deniedHTML(key) {
   return `<div class="card card-b" style="max-width:640px">
     <div class="stack"><span class="li-ic" style="width:48px;height:48px">${icon('shield', 26)}</span>
     <h2 style="margin:0;font-family:var(--font-display);font-size:22px">Anda tidak punya akses ke ${esc(navInfo(key).title)}</h2>
-    <p class="muted" style="margin:0">Peran <b>${esc(roleById(currentUser().role).name)}</b> tidak mencakup modul ini. Minta pemilik outlet menambahkan izin di menu Pengguna &amp; Akses bila Anda memerlukannya.</p>
+    <p class="muted" style="margin:0">Peran <b>${esc(currentUser().role_name)}</b> tidak mencakup modul ini. Minta pemilik outlet menambahkan izin di menu Pengguna &amp; Akses bila Anda memerlukannya.</p>
     <div class="row"><button class="btn btn-primary" data-act="go" data-to="${firstAllowed()}">${icon('arrow-right', 16)} Ke ${esc(navInfo(firstAllowed()).title)}</button></div></div></div>`;
 }
 
 /* =========================== LAYAR MASUK =========================== */
-const LOGIN = { mode: 'email', email: '', err: '', pinUser: null, pin: '', lockedFor: null };
+const LOGIN = { mode: 'email', email: '', err: '', pinUsers: null, pinUser: null, pin: '', busy: false };
 function themeSwitchHTML() {
   const cur = document.documentElement.dataset.theme || 'system';
   return [['light', 'sun', 'Terang'], ['dark', 'moon', 'Gelap'], ['system', 'monitor', 'Ikuti sistem']]
     .map(([v, ic, t]) => `<button type="button" class="${cur === v ? 'on' : ''}" data-act="theme-set" data-v="${v}" title="${t}" aria-label="Tema ${t}" aria-pressed="${cur === v}">${icon(ic, 15)}</button>`).join('');
 }
-function attemptsLeft(key) {
-  const a = AUTH.attempts[key];
-  if (a && a.until > Date.now()) return { locked: Math.ceil((a.until - Date.now()) / 1000) };
-  return { locked: 0 };
-}
-function failAttempt(key, uid) {
-  const a = AUTH.attempts[key] && AUTH.attempts[key].until > Date.now() ? AUTH.attempts[key] : (AUTH.attempts[key] || { n: 0, until: 0 });
-  if (a.until && a.until <= Date.now()) { a.n = 0; a.until = 0; }
-  a.n++;
-  if (a.n >= MAX_TRY) { a.until = Date.now() + LOCK_MS; a.n = 0; audit('Akun terkunci sementara', key, uid); }
-  AUTH.attempts[key] = a; saveAuth();
-  return MAX_TRY - a.n;
-}
+const pinPadHTML = (label, n) => `<div class="pin-box"><div class="lbl" style="text-align:center">${label}</div>
+  <div class="pin-dots" aria-label="${n} dari 6 digit">${[0, 1, 2, 3, 4, 5].map(i => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</div>
+  ${LOGIN.err ? `<div class="login-error">${icon('triangle-alert', 16)}<span>${esc(LOGIN.err)}</span></div>` : ''}
+  <div class="pinpad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0', 'ok'].map(k => k === 'del'
+    ? `<button type="button" data-act="pin-key" data-k="del" aria-label="Hapus digit">${icon('chevron-left', 20)}</button>`
+    : k === 'ok' ? `<button type="button" class="ok" data-act="pin-key" data-k="ok" aria-label="Masuk">${icon('arrow-right', 20)}</button>`
+    : `<button type="button" data-act="pin-key" data-k="${k}">${k}</button>`).join('')}</div></div>`;
 function loginFormHTML() {
   const L = LOGIN;
-  const err = L.err ? `<div class="login-error">${icon('triangle-alert', 16)}<span>${L.err}</span></div>` : '';
+  const err = L.err ? `<div class="login-error">${icon('triangle-alert', 16)}<span>${esc(L.err)}</span></div>` : '';
+  if (L.mode === 'unlock' && LOCKED) {
+    return `<div class="row" style="flex-wrap:nowrap;margin-bottom:16px"><span class="avatar" style="width:44px;height:44px;background:var(--brand-100);color:var(--brand-700)">${esc(LOCKED.initials)}</span>
+      <div><div class="strong">${esc(LOCKED.name)}</div><div class="muted" style="font-size:13px">${esc(LOCKED.role_name)} · layar terkunci</div></div></div>
+      ${LOCKED.has_pin ? pinPadHTML('Masukkan PIN untuk melanjutkan', L.pin.length)
+        : `<form id="unlock-form" novalidate><div class="field"><label for="unlock-pass">Kata sandi</label><input class="input" id="unlock-pass" type="password" autocomplete="current-password"></div>${err}
+           <button type="submit" class="btn btn-primary btn-lg btn-block" style="margin-top:12px">${icon('arrow-right', 17)} Buka kunci</button></form>`}
+      <div style="text-align:center;margin-top:16px"><button type="button" class="linkish" data-act="login-other">Masuk sebagai pengguna lain</button></div>`;
+  }
   if (L.mode === 'pin') {
-    const users = activeUsers().filter(u => u.pin);
-    const sel = L.pinUser ? userById(L.pinUser) : null;
-    return `<div class="pin-users">${users.map(u => `<button type="button" class="pin-user ${L.pinUser === u.id ? 'on' : ''}" data-act="pin-user" data-id="${u.id}"><span class="av">${initials(u.name)}</span><span><span class="nm">${esc(u.name)}</span><span class="rl">${esc(roleById(u.role).name)}</span></span></button>`).join('')}</div>
-      ${sel ? `<div class="pin-box"><div class="lbl" style="text-align:center">PIN ${esc(sel.name.split(' ')[0])}</div>
-        <div class="pin-dots" aria-label="${L.pin.length} dari 6 digit">${[0, 1, 2, 3, 4, 5].map(i => `<i class="${i < L.pin.length ? 'on' : ''}"></i>`).join('')}</div>${err}
-        <div class="pinpad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0', 'ok'].map(k => k === 'del'
-          ? `<button type="button" data-act="pin-key" data-k="del" aria-label="Hapus digit">${icon('chevron-left', 20)}</button>`
-          : k === 'ok' ? `<button type="button" class="ok" data-act="pin-key" data-k="ok" aria-label="Masuk">${icon('arrow-right', 20)}</button>`
-          : `<button type="button" data-act="pin-key" data-k="${k}">${k}</button>`).join('')}</div></div>`
-        : `<p class="muted" style="text-align:center;margin:8px 0 0">Pilih nama Anda, lalu masukkan PIN 6 digit.</p>`}`;
+    if (L.pinUsers === null) return `<p class="muted" style="text-align:center">Memuat daftar pengguna…</p>${err}`;
+    if (!L.pinUsers.length) return err || `<p class="muted" style="text-align:center">Belum ada pengguna yang punya PIN.</p>`;
+    const sel = L.pinUsers.find(u => u.id === L.pinUser);
+    return `<div class="pin-users">${L.pinUsers.map(u => `<button type="button" class="pin-user ${L.pinUser === u.id ? 'on' : ''}" data-act="pin-user" data-id="${u.id}"><span class="av">${esc(u.initials)}</span><span><span class="nm">${esc(u.name)}</span><span class="rl">${esc(u.role_name)}</span></span></button>`).join('')}</div>
+      ${sel ? pinPadHTML('PIN ' + esc(sel.name.split(' ')[0]), L.pin.length) : `<p class="muted" style="text-align:center;margin:8px 0 0">Pilih nama Anda, lalu masukkan PIN 6 digit.</p>`}`;
   }
   return `<form id="login-form" novalidate>
-    <div class="field"><label for="login-email">Email</label><input class="input" id="login-email" type="email" autocomplete="username" placeholder="nama@dapurnusantara.id" value="${esc(L.email)}"></div>
+    <div class="field"><label for="login-email">Email</label><input class="input" id="login-email" type="email" autocomplete="username" placeholder="nama@usaha.id" value="${esc(L.email)}"></div>
     <div class="field"><label for="login-pass">Kata sandi</label><div class="pass-wrap"><input class="input" id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••">
       <button type="button" class="pass-eye" data-act="pass-eye" aria-label="Tampilkan kata sandi">${icon('eye', 17)}</button></div></div>
     <div class="login-row"><label class="check"><input type="checkbox" id="login-remember" checked> Ingat saya di perangkat ini</label>
       <button type="button" class="linkish" data-act="forgot">Lupa kata sandi?</button></div>
     ${err}
-    <button type="submit" class="btn btn-primary btn-lg btn-block">${icon('log-out', 17)} Masuk</button>
-  </form>
-  <div class="login-demo"><div class="lbl">Akun demo</div>
-    <p>Purwarupa ini belum terhubung ke server. Semua akun demo memakai kata sandi <code>${DEMO_PASSWORD}</code>. Klik salah satu untuk mengisi formulir.</p>
-    <div class="demo-list">${AUTH.users.map(u => `<button type="button" class="demo-acct ${u.active ? '' : 'off'}" data-act="login-demo" data-id="${u.id}" title="${esc(u.email)}"><span class="av">${initials(u.name)}</span><span style="min-width:0"><span class="nm">${esc(u.name)}</span><span class="rl">${u.active ? esc(roleById(u.role).name) : 'Nonaktif · ' + esc(roleById(u.role).name)}</span></span></button>`).join('')}</div></div>`;
+    <button type="submit" class="btn btn-primary btn-lg btn-block" ${L.busy ? 'disabled' : ''}>${icon('log-out', 17)} ${L.busy ? 'Memeriksa…' : 'Masuk'}</button>
+  </form>`;
+}
+function bindLoginForms() {
+  const f = document.getElementById('login-form');
+  if (f) f.addEventListener('submit', e => { e.preventDefault(); doLogin(); });
+  const u = document.getElementById('unlock-form');
+  if (u) u.addEventListener('submit', e => { e.preventDefault(); doUnlock({ password: document.getElementById('unlock-pass').value }); });
 }
 function renderLogin() {
   const el = document.getElementById('login');
+  const locked = LOGIN.mode === 'unlock' && LOCKED;
   el.innerHTML = `
   <div class="login-brandside">
     <div class="login-brandtop"><span class="brand-mark">${icon('chef-hat', 24)}</span><span><span class="brand-name">Racik POS</span><br><span class="brand-sub">POS · Resto &amp; F&amp;B</span></span></div>
     <div class="login-claim">
-      <div class="login-metric">${AUTH.roles.length} peran</div>
+      <div class="login-metric">1 data</div>
       <h2>Dari pembelian bahan sampai laporan laba rugi</h2>
       <p>Kasir, dapur, gudang, dan pemilik bekerja di data yang sama, dengan akses sesuai peran masing-masing.</p>
       <blockquote>Setiap porsi yang terjual langsung memotong stok sesuai resep standar.</blockquote>
@@ -272,68 +202,62 @@ function renderLogin() {
   <div class="login-formside">
     <div class="login-prefs"><div class="theme-switch on-light" role="group" aria-label="Tema">${themeSwitchHTML()}</div></div>
     <div class="login-card">
-      <h1>Masuk ke Racik POS</h1>
+      <h1>${locked ? 'Layar terkunci' : 'Masuk ke Racik POS'}</h1>
       <p class="login-sub">${esc(S.settings.outlet)} · ${esc(S.settings.branch)}</p>
-      <div class="seg" style="width:100%;margin-bottom:20px">
+      ${locked ? '' : `<div class="seg" style="width:100%;margin-bottom:20px">
         <button type="button" style="flex:1;justify-content:center" class="${LOGIN.mode === 'email' ? 'on' : ''}" data-act="login-mode" data-v="email">${icon('user', 14)} Email &amp; kata sandi</button>
         <button type="button" style="flex:1;justify-content:center" class="${LOGIN.mode === 'pin' ? 'on' : ''}" data-act="login-mode" data-v="pin">${icon('shield', 14)} PIN kasir</button>
-      </div>
+      </div>`}
       <div id="login-body">${loginFormHTML()}</div>
     </div>
   </div>`;
-  const f = document.getElementById('login-form');
-  if (f) {
-    f.addEventListener('submit', e => { e.preventDefault(); doLogin(); });
-    const target = LOGIN.email ? document.getElementById('login-pass') : document.getElementById('login-email');
-    if (target) target.focus();
-  }
+  bindLoginForms();
+  const target = document.getElementById(LOGIN.email ? 'login-pass' : 'login-email') || document.getElementById('unlock-pass');
+  if (target) target.focus();
 }
-function paintLoginBody() { document.getElementById('login-body').innerHTML = loginFormHTML(); const f = document.getElementById('login-form'); if (f) f.addEventListener('submit', e => { e.preventDefault(); doLogin(); }); }
+function paintLoginBody() { document.getElementById('login-body').innerHTML = loginFormHTML(); bindLoginForms(); }
 
-function doLogin() {
+async function doLogin() {
   const email = document.getElementById('login-email').value.trim().toLowerCase();
-  const pass = document.getElementById('login-pass').value;
+  const password = document.getElementById('login-pass').value;
   const remember = document.getElementById('login-remember').checked;
   LOGIN.email = email;
-  if (!email || !pass) { LOGIN.err = 'Isi email dan kata sandi.'; paintLoginBody(); return; }
-  const key = 'pw:' + email;
-  const lk = attemptsLeft(key);
-  if (lk.locked) { LOGIN.err = `Terlalu banyak percobaan gagal. Coba lagi dalam ${lk.locked} detik.`; paintLoginBody(); return; }
-  const u = AUTH.users.find(x => x.email.toLowerCase() === email);
-  if (!u || u.pw !== hashSecret(u.id, 'pw', pass)) {
-    const left = failAttempt(key, u && u.id);
-    audit('Gagal masuk', email, u && u.id);
-    LOGIN.err = left > 0 && left < MAX_TRY ? `Email atau kata sandi salah. Sisa ${left} percobaan.` : `Terlalu banyak percobaan gagal. Coba lagi dalam ${LOCK_MS / 1000} detik.`;
-    paintLoginBody(); document.getElementById('login-pass').focus(); return;
-  }
-  if (!u.active) { LOGIN.err = 'Akun ini dinonaktifkan. Hubungi pemilik outlet.'; audit('Gagal masuk', 'Akun nonaktif', u.id); paintLoginBody(); return; }
-  delete AUTH.attempts[key];
-  completeLogin(u, remember, 'Masuk');
+  if (!email || !password) { LOGIN.err = 'Isi email dan kata sandi.'; paintLoginBody(); return; }
+  LOGIN.busy = true; LOGIN.err = ''; paintLoginBody();
+  const r = await api('POST', 'auth/login', { email, password, remember });
+  LOGIN.busy = false;
+  if (!r.ok) { LOGIN.err = apiErr(r); paintLoginBody(); const p = document.getElementById('login-pass'); if (p) p.focus(); return; }
+  completeLogin(r.data);
 }
-function doPinLogin() {
-  const u = userById(LOGIN.pinUser);
-  const key = 'pin:' + u.id;
-  const lk = attemptsLeft(key);
-  if (lk.locked) { LOGIN.err = `PIN terkunci. Coba lagi dalam ${lk.locked} detik.`; LOGIN.pin = ''; paintLoginBody(); return; }
-  if (u.pin !== hashSecret(u.id, 'pin', LOGIN.pin)) {
-    const left = failAttempt(key, u.id);
-    audit('Gagal masuk', 'PIN salah', u.id);
-    LOGIN.err = left > 0 && left < MAX_TRY ? `PIN salah. Sisa ${left} percobaan.` : `PIN terkunci selama ${LOCK_MS / 1000} detik.`;
-    LOGIN.pin = ''; paintLoginBody();
+async function doPinLogin() {
+  const r = await api('POST', 'auth/pin', { user_id: LOGIN.pinUser, pin: LOGIN.pin });
+  LOGIN.pin = '';
+  if (!r.ok) {
+    LOGIN.err = apiErr(r); paintLoginBody();
     const box = document.querySelector('.pin-dots'); if (box) box.classList.add('shake');
     return;
   }
-  delete AUTH.attempts[key];
-  completeLogin(u, false, 'Masuk dengan PIN');
+  completeLogin(r.data);
 }
-function completeLogin(u, remember, how) {
-  u.lastLogin = Date.now();
-  writeSession(u.id, remember);
-  audit(how, navigator.userAgent.includes('Mobile') ? 'Perangkat seluler' : 'Peramban desktop', u.id);
-  Object.assign(LOGIN, { err: '', pin: '', pinUser: null, email: '' });
+async function doUnlock(cred) {
+  const r = await api('POST', 'auth/unlock', cred);
+  LOGIN.pin = '';
+  if (r.status === 401 && r.data.error.code === 'UNAUTHENTICATED') { LOCKED = null; LOGIN.mode = 'email'; LOGIN.err = 'Sesi sudah berakhir. Silakan masuk lagi.'; renderLogin(); return; }
+  if (!r.ok) { LOGIN.err = apiErr(r); paintLoginBody(); const box = document.querySelector('.pin-dots'); if (box) box.classList.add('shake'); return; }
+  const cartKeep = UI.cart;
+  setMe(r.data); await loadStaff();
+  UI.cart = cartKeep;   // layar terkunci tidak menghapus pesanan yang sedang diinput
+  Object.assign(LOGIN, { err: '', pin: '', mode: 'email' });
+  enterApp();
+}
+async function completeLogin(data) {
+  setMe(data);
+  await loadStaff();
+  Object.assign(LOGIN, { err: '', pin: '', pinUser: null, email: '', mode: 'email' });
   UI.cart = newCart();
   enterApp();
-  toast(`Selamat datang, ${u.name.split(' ')[0]}. Anda masuk sebagai ${roleById(u.role).name}.`, 'circle-check');
+  toast(`Selamat datang, ${ME.user.name.split(' ')[0]}. Anda masuk sebagai ${ME.user.role_name}.`, 'circle-check');
+  if (ME.user.must_change_password) forceChangePassword();
 }
 function showLogin() {
   const app = document.getElementById('app');
@@ -345,213 +269,216 @@ function showLogin() {
   document.getElementById('tip').hidden = true;
   closeModal(true);
   document.getElementById('login').hidden = false;
-  document.title = 'Masuk · Racik POS Resto';
+  document.title = (LOCKED ? 'Terkunci' : 'Masuk') + ' · Racik POS Resto';
   renderLogin();
   window.scrollTo(0, 0);
+  if (LOGIN.mode === 'pin' && LOGIN.pinUsers === null) loadPinUsers();
 }
-function logout(reason, lock) {
-  const u = currentUser();
-  if (u) audit(lock ? 'Layar dikunci' : 'Keluar', reason || '', u.id);
-  clearSession();
+function goLocked(details) {
+  LOCKED = details.user; CSRF = details.csrf || CSRF; ME = null;
+  Object.assign(LOGIN, { mode: 'unlock', pin: '', err: '' });
+  showLogin();
+}
+async function loadPinUsers() {
+  const r = await api('GET', 'auth/pin-users');
+  LOGIN.pinUsers = r.ok ? r.data.users : [];
+  if (!r.ok) LOGIN.err = apiErr(r);
+  if (LOGIN.mode === 'pin') paintLoginBody();
+}
+async function logout(reason) {
+  await api('POST', 'auth/logout', {});
+  ME = null; LOCKED = null; CSRF = ''; STAFF = [];
   UI.cart = newCart();
-  if (lock && u) {
-    if (u.pin) Object.assign(LOGIN, { mode: 'pin', pinUser: u.id, pin: '' }); else Object.assign(LOGIN, { mode: 'email', email: u.email });
-  }
-  LOGIN.err = reason || '';
+  Object.assign(LOGIN, { mode: 'email', err: reason || '', pin: '', pinUsers: null });
   showLogin();
 }
 
-ACT['login-mode'] = el => { Object.assign(LOGIN, { mode: el.dataset.v, err: '', pin: '' }); renderLogin(); };
-ACT['login-demo'] = el => {
-  const u = userById(el.dataset.id);
-  LOGIN.email = u.email; LOGIN.err = '';
-  paintLoginBody();
-  document.getElementById('login-pass').value = DEMO_PASSWORD;
-  document.getElementById('login-pass').focus();
+ACT['login-mode'] = el => {
+  Object.assign(LOGIN, { mode: el.dataset.v, err: '', pin: '' });
+  renderLogin();
+  if (el.dataset.v === 'pin') { LOGIN.pinUsers = null; paintLoginBody(); loadPinUsers(); }
 };
+ACT['login-other'] = () => logout('');
 ACT['pass-eye'] = () => { const p = document.getElementById('login-pass'); p.type = p.type === 'password' ? 'text' : 'password'; };
-ACT['forgot'] = () => { LOGIN.err = 'Minta pemilik outlet mengatur ulang kata sandi Anda di menu Pengguna &amp; Akses.'; paintLoginBody(); };
-ACT['pin-user'] = el => { Object.assign(LOGIN, { pinUser: el.dataset.id, pin: '', err: '' }); paintLoginBody(); };
+ACT['forgot'] = () => { LOGIN.err = 'Minta pemilik outlet mengatur ulang kata sandi Anda di menu Pengguna & Akses.'; paintLoginBody(); };
+ACT['pin-user'] = el => { Object.assign(LOGIN, { pinUser: +el.dataset.id, pin: '', err: '' }); paintLoginBody(); };
 ACT['pin-key'] = el => {
+  if (LOGIN.busy) return;
   const k = el.dataset.k;
   if (k === 'del') LOGIN.pin = LOGIN.pin.slice(0, -1);
-  else if (k === 'ok') { if (LOGIN.pin.length === 6) { doPinLogin(); return; } }
-  else if (LOGIN.pin.length < 6) LOGIN.pin += k;
+  else if (k !== 'ok' && LOGIN.pin.length < 6) LOGIN.pin += k;
   LOGIN.err = '';
-  if (LOGIN.pin.length === 6) { doPinLogin(); return; }
+  if (LOGIN.pin.length === 6 || (k === 'ok' && LOGIN.pin.length === 6)) {
+    LOGIN.busy = true; paintLoginBody();
+    const done = LOGIN.mode === 'unlock' ? doUnlock({ pin: LOGIN.pin }) : doPinLogin();
+    done.finally(() => { LOGIN.busy = false; });
+    return;
+  }
   paintLoginBody();
 };
 document.addEventListener('keydown', e => {
-  if (document.getElementById('login').hidden || LOGIN.mode !== 'pin' || !LOGIN.pinUser) return;
+  if (document.getElementById('login').hidden) return;
+  const pinPad = (LOGIN.mode === 'pin' && LOGIN.pinUser) || (LOGIN.mode === 'unlock' && LOCKED && LOCKED.has_pin);
+  if (!pinPad) return;
   if (/^[0-9]$/.test(e.key)) { ACT['pin-key']({ dataset: { k: e.key } }); e.preventDefault(); }
   else if (e.key === 'Backspace') { ACT['pin-key']({ dataset: { k: 'del' } }); e.preventDefault(); }
 });
 ACT['logout'] = () => logout('');
-ACT['lock'] = () => logout('Layar dikunci. Masuk lagi untuk melanjutkan.', true);
+ACT['lock'] = async () => {
+  const r = await api('POST', 'auth/lock', {});
+  if (r.ok) goLocked({ user: r.data.user, csrf: CSRF });
+};
 
-/* ---------- Batas waktu tidak aktif ---------- */
+/* ---------- Kunci otomatis setelah tidak aktif (server juga menegakkan ini) ---------- */
 let lastActivity = Date.now();
 ['click', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, () => { lastActivity = Date.now(); }, { passive: true }));
-setInterval(() => {
-  if (currentUser() && Date.now() - lastActivity > IDLE_MS) logout('Sesi dikunci karena tidak ada aktivitas selama 30 menit.', true);
-}, 60000);
+setInterval(() => { if (ME && Date.now() - lastActivity > IDLE_MS) ACT['lock'](); }, 60000);
 
 /* ---------- Persetujuan dengan PIN (diskon, void, batal bill) ----------
-   Bila pengguna sendiri punya izin, aksi langsung jalan tanpa PIN. */
-function withApproval(perm, title, info, onOk) {
+   Bila pengguna sendiri punya izin, aksi langsung jalan tanpa PIN. PIN diverifikasi server. */
+async function withApproval(perm, title, info, onOk) {
   if (can(perm)) { onOk(currentUser()); return; }
-  const approvers = activeUsers().filter(u => u.pin && can(perm, u));
+  const r = await api('GET', 'auth/approvers?perm=' + encodeURIComponent(perm));
+  const approvers = r.ok ? r.data.users : [];
   if (!approvers.length) { toast('Tidak ada penyetuju aktif yang punya PIN.', 'ban'); return; }
   openModal({
     title, size: 'sm',
     body: `<div class="alert info">${icon('shield', 16)}<div>${info} Minta manajer atau pemilik memasukkan PIN-nya.</div></div>
-      <div class="field"><label for="ap-user">Disetujui oleh</label><select class="input" id="ap-user">${opts(approvers.map(u => [u.id, u.name + ' · ' + roleById(u.role).name]), approvers[0].id)}</select></div>
+      <div class="field"><label for="ap-user">Disetujui oleh</label><select class="input" id="ap-user">${opts(approvers.map(u => [u.id, u.name + ' · ' + u.role_name]), approvers[0].id)}</select></div>
       <div class="field"><label for="ap-pin">PIN 6 digit</label><input class="input num" id="ap-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" autofocus></div>
       <div id="ap-err"></div>`,
     foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="ap-ok">${icon('check', 16)} Setujui</button>`,
   });
-  ACT['ap-ok'] = () => {
-    const u = userById(document.getElementById('ap-user').value);
-    const pin = document.getElementById('ap-pin').value.trim();
-    const key = 'pin:' + u.id;
-    if (attemptsLeft(key).locked) { document.getElementById('ap-err').innerHTML = `<div class="alert bad">${icon('ban', 16)}<div>PIN ${esc(u.name)} sedang terkunci.</div></div>`; return; }
-    if (u.pin !== hashSecret(u.id, 'pin', pin)) {
-      failAttempt(key, u.id);
-      audit('Persetujuan ditolak', `${title}: PIN salah untuk ${u.name}`);
-      document.getElementById('ap-err').innerHTML = `<div class="alert bad">${icon('triangle-alert', 16)}<div>PIN salah.</div></div>`;
+  ACT['ap-ok'] = async () => {
+    const res = await api('POST', 'auth/approve', { user_id: +document.getElementById('ap-user').value, pin: document.getElementById('ap-pin').value.trim(), perm, context: title });
+    if (!res.ok) {
+      document.getElementById('ap-err').innerHTML = `<div class="alert bad">${icon('triangle-alert', 16)}<div>${esc(apiErr(res))}</div></div>`;
       document.getElementById('ap-pin').value = ''; document.getElementById('ap-pin').focus();
       return;
     }
-    delete AUTH.attempts[key];
     closeModal(true);
-    onOk(u);
+    onOk(res.data.approver);
   };
 }
 function askDiscountApproval(pct, onOk) {
-  withApproval('kasir.diskon', 'Persetujuan diskon ' + pct + '%', 'Peran Anda tidak bisa memberi diskon sendiri.', u => {
-    audit('Persetujuan diskon', `Diskon ${pct}% disetujui oleh ${u.name}`);
-    onOk(u);
-  });
+  withApproval('kasir.diskon', 'Persetujuan diskon ' + pct + '%', 'Peran Anda tidak bisa memberi diskon sendiri.', onOk);
 }
 
-/* ---------- Profil sendiri ---------- */
-ACT['profile'] = () => {
-  const u = currentUser(), r = roleById(u.role);
+/* ---------- Profil sendiri & wajib ganti kata sandi ---------- */
+function profileModal(forced) {
+  const u = currentUser();
   openModal({
-    title: 'Profil saya', size: 'sm',
-    body: `<div class="row" style="flex-wrap:nowrap"><span class="avatar" style="width:48px;height:48px;background:var(--brand-100);color:var(--brand-700)">${initials(u.name)}</span><div><div class="strong">${esc(u.name)}</div><div class="muted">${esc(u.email)}</div></div><span class="spacer"></span>${rolePill(u.role)}</div>
-      <p class="muted" style="margin:0;font-size:13px">${esc(r.desc)}</p>
-      <div class="field"><label for="pf-old">Kata sandi sekarang</label><input class="input" id="pf-old" type="password" autocomplete="current-password"></div>
+    title: forced ? 'Ganti kata sandi awal' : 'Profil saya', size: 'sm',
+    onClose: forced ? () => { if (currentUser() && currentUser().must_change_password) setTimeout(() => profileModal(true), 0); } : null,
+    body: `${forced ? `<div class="alert">${icon('shield', 16)}<div>Akun Anda masih memakai kata sandi awal dari pemilik/administrator. Buat kata sandi baru sebelum melanjutkan.</div></div>` : ''}
+      <div class="row" style="flex-wrap:nowrap"><span class="avatar" style="width:48px;height:48px;background:var(--brand-100);color:var(--brand-700)">${esc(u.initials)}</span><div><div class="strong">${esc(u.name)}</div><div class="muted">${esc(u.email)}</div></div><span class="spacer"></span>${rolePill(u.role)}</div>
+      <div class="field"><label for="pf-old">Kata sandi sekarang</label><input class="input" id="pf-old" type="password" autocomplete="current-password" autofocus></div>
       <div class="form-grid"><div class="field"><label for="pf-new">Kata sandi baru</label><input class="input" id="pf-new" type="password" autocomplete="new-password" placeholder="Minimal 8 karakter"></div>
       <div class="field"><label for="pf-pin">PIN kasir baru</label><input class="input num" id="pf-pin" type="password" inputmode="numeric" maxlength="6" placeholder="6 digit, opsional"></div></div>
       <div id="pf-err"></div>`,
-    foot: `<button class="btn" data-act="modal-close">Tutup</button><button class="btn btn-primary" data-act="pf-save">${icon('save', 16)} Simpan</button>`,
+    foot: `${forced ? '' : '<button class="btn" data-act="modal-close">Tutup</button>'}<button class="btn btn-primary" data-act="pf-save" data-forced="${forced ? '1' : ''}">${icon('save', 16)} Simpan</button>`,
   });
-};
-ACT['pf-save'] = () => {
-  const u = currentUser();
+}
+function forceChangePassword() { profileModal(true); }
+ACT['profile'] = () => profileModal(false);
+ACT['pf-save'] = async el => {
+  const forced = !!el.dataset.forced;
   const old = document.getElementById('pf-old').value, nw = document.getElementById('pf-new').value, pin = document.getElementById('pf-pin').value.trim();
-  const fail = m => { document.getElementById('pf-err').innerHTML = `<div class="alert bad">${icon('triangle-alert', 16)}<div>${m}</div></div>`; };
-  if (!nw && !pin) return fail('Isi kata sandi baru atau PIN baru.');
-  if (u.pw !== hashSecret(u.id, 'pw', old)) return fail('Kata sandi sekarang salah.');
-  if (nw && nw.length < 8) return fail('Kata sandi baru minimal 8 karakter.');
-  if (pin && !/^\d{6}$/.test(pin)) return fail('PIN harus 6 digit angka.');
-  if (nw) u.pw = hashSecret(u.id, 'pw', nw);
-  if (pin) u.pin = hashSecret(u.id, 'pin', pin);
-  audit('Kredensial diubah', [nw && 'kata sandi', pin && 'PIN'].filter(Boolean).join(' & '));
-  closeModal(true); toast('Kredensial Anda diperbarui.');
+  const fail = m => { document.getElementById('pf-err').innerHTML = `<div class="alert bad">${icon('triangle-alert', 16)}<div>${esc(m)}</div></div>`; };
+  if (forced && !nw) return fail('Isi kata sandi baru.');
+  const r = await api('PUT', 'auth/me/credentials', { current_password: old, new_password: nw, new_pin: pin });
+  if (!r.ok) return fail(apiErr(r));
+  ME.user = { ...ME.user, ...r.data.user };
+  closeModal(true); paintChrome(); toast('Kredensial Anda diperbarui.');
 };
 
 /* =========================== PENGGUNA & AKSES =========================== */
 UI.users = { tab: 'users' };
+const ADMIN = { users: null, roles: null, logs: null, loading: false, err: '' };
+async function loadAdmin() {
+  if (ADMIN.loading) return;
+  ADMIN.loading = true;
+  const [u, r, l] = await Promise.all([api('GET', 'users'), api('GET', 'roles'), api('GET', 'audit-logs?limit=200')]);
+  ADMIN.loading = false;
+  if (!u.ok || !r.ok || !l.ok) { ADMIN.err = apiErr([u, r, l].find(x => !x.ok)); ADMIN.users = []; ADMIN.roles = []; ADMIN.logs = []; }
+  else { ADMIN.err = ''; ADMIN.users = u.data.users; ADMIN.roles = r.data.roles; ADMIN.logs = l.data.logs; }
+  if (current === 'pengguna') render();
+}
 VIEWS.pengguna = () => {
+  if (ADMIN.users === null) { loadAdmin(); return `<div class="card">${emptyState('refresh-cw', 'Memuat data pengguna dari server…')}</div>`; }
+  if (ADMIN.err) return `<div class="alert bad">${icon('triangle-alert', 16)}<div>${esc(ADMIN.err)}</div></div>`;
   const T = UI.users.tab;
-  const tabs = [['users', 'Pengguna', AUTH.users.length], ['roles', 'Peran & hak akses', AUTH.roles.length], ['log', 'Log aktivitas', AUTH.audit.length]];
+  const active = ADMIN.users.filter(u => u.active);
+  const tabs = [['users', 'Pengguna', ADMIN.users.length], ['roles', 'Peran & hak akses', ADMIN.roles.length], ['log', 'Log aktivitas', ADMIN.logs.length]];
   let body = '';
   if (T === 'users') {
-    body = `<div class="strip">${AUTH.roles.map(r => `<div><div class="s-l">${esc(r.name)}</div><div class="s-v">${AUTH.users.filter(u => u.role === r.id && u.active).length}</div></div>`).join('')}</div>
-      <div class="row between"><div class="muted">${activeUsers().length} pengguna aktif dari ${AUTH.users.length}. Semua akun demo memakai kata sandi <code class="mono">${DEMO_PASSWORD}</code> sampai diubah.</div>
+    body = `<div class="strip">${ADMIN.roles.map(r => `<div><div class="s-l">${esc(r.name)}</div><div class="s-v">${active.filter(u => u.role === r.id).length}</div></div>`).join('')}</div>
+      <div class="row between"><div class="muted">${active.length} pengguna aktif dari ${ADMIN.users.length}. Pengguna baru dan kata sandi yang diatur ulang wajib diganti saat pertama masuk.</div>
       <button class="btn btn-primary" data-act="user-edit">${icon('plus', 16)} Tambah pengguna</button></div>
       <div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>Pengguna</th><th>Peran</th><th>PIN kasir</th><th>Masuk terakhir</th><th>Status</th><th></th></tr></thead><tbody>
-      ${AUTH.users.map(u => `<tr><td><div class="row" style="flex-wrap:nowrap;gap:10px"><span class="avatar" style="background:var(--brand-100);color:var(--brand-700)">${initials(u.name)}</span><div><div class="strong">${esc(u.name)}${u.id === currentUser().id ? ' <span class="faint">(Anda)</span>' : ''}</div><div class="sub">${esc(u.email)}</div></div></div></td>
-        <td>${rolePill(u.role)}</td><td>${u.pin ? '<span class="pill ok">Aktif</span>' : '<span class="faint">Belum diatur</span>'}</td>
-        <td>${u.lastLogin ? fmtDT(u.lastLogin) : '<span class="faint">Belum pernah</span>'}</td><td>${u.active ? '<span class="pill ok">Aktif</span>' : '<span class="pill">Nonaktif</span>'}</td>
+      ${ADMIN.users.map(u => `<tr><td><div class="row" style="flex-wrap:nowrap;gap:10px"><span class="avatar" style="background:var(--brand-100);color:var(--brand-700)">${esc(u.initials)}</span><div><div class="strong">${esc(u.name)}${u.id === currentUser().id ? ' <span class="faint">(Anda)</span>' : ''}</div><div class="sub">${esc(u.email)}</div></div></div></td>
+        <td>${rolePill(u.role)}</td><td>${u.has_pin ? '<span class="pill ok">Aktif</span>' : '<span class="faint">Belum diatur</span>'}</td>
+        <td>${u.last_login ? fmtDT(u.last_login) : '<span class="faint">Belum pernah</span>'}${u.must_change_password ? ' <span class="pill warn">Wajib ganti sandi</span>' : ''}</td><td>${u.active ? '<span class="pill ok">Aktif</span>' : '<span class="pill">Nonaktif</span>'}</td>
         <td><button class="btn btn-sm btn-ghost" data-act="user-edit" data-id="${u.id}">${icon('pencil', 14)} Ubah</button></td></tr>`).join('')}
       </tbody></table></div></div>`;
   } else if (T === 'roles') {
     const mods = NAV.flatMap(g => g.items.map(i => ['m:' + i[0], i[1], g.group]));
-    const acts = ACTION_PERMS.map(([p, l, g]) => [p, l, g]);
     const cell = (r, p) => {
       const on = r.perms.includes('*') || r.perms.includes(p);
       return `<td style="text-align:center"><input type="checkbox" class="perm-cb" ${on ? 'checked' : ''} ${r.locked ? 'disabled' : ''} data-ch="role-toggle" data-role="${r.id}" data-perm="${p}" aria-label="${esc(r.name)}: ${esc(permLabel(p))}"></td>`;
     };
-    const rows = (list, title) => `<tr class="group"><td colspan="${AUTH.roles.length + 1}">${title}</td></tr>` + list.map(([p, l, g]) => `<tr><td><div class="strong" style="font-weight:500">${esc(l)}</div><div class="sub">${esc(g)}</div></td>${AUTH.roles.map(r => cell(r, p)).join('')}</tr>`).join('');
-    body = `<div class="alert info">${icon('shield', 16)}<div>Centang langsung tersimpan dan berlaku pada klik berikutnya. Peran <b>Pemilik</b> selalu punya akses penuh dan tidak bisa diubah, supaya outlet tidak pernah terkunci dari pengaturannya sendiri.</div></div>
-      <div class="grid g-3">${AUTH.roles.map(r => `<div class="card card-b stack" style="gap:6px"><div class="row between">${rolePill(r.id)}<span class="muted" style="font-size:12px">${AUTH.users.filter(u => u.role === r.id).length} pengguna</span></div><div style="font-size:13px">${esc(r.desc)}</div><div class="faint" style="font-size:12px">${r.perms.includes('*') ? 'Semua izin' : r.perms.length + ' izin'}</div></div>`).join('')}</div>
-      <div class="card"><div class="table-wrap"><table class="tbl perm-matrix"><thead><tr><th>Izin</th>${AUTH.roles.map(r => `<th style="text-align:center">${esc(r.name)}</th>`).join('')}</tr></thead><tbody>
-      ${rows(mods, 'AKSES MODUL')}${rows(acts, 'AKSI')}</tbody></table></div></div>`;
+    const rows = (list, title) => `<tr class="group"><td colspan="${ADMIN.roles.length + 1}">${title}</td></tr>` + list.map(([p, l, g]) => `<tr><td><div class="strong" style="font-weight:500">${esc(l)}</div><div class="sub">${esc(g)}</div></td>${ADMIN.roles.map(r => cell(r, p)).join('')}</tr>`).join('');
+    body = `<div class="alert info">${icon('shield', 16)}<div>Perubahan langsung disimpan di server dan berlaku pada permintaan berikutnya. Peran <b>Pemilik</b> selalu punya akses penuh dan tidak bisa diubah.</div></div>
+      <div class="grid g-3">${ADMIN.roles.map(r => `<div class="card card-b stack" style="gap:6px"><div class="row between">${rolePill(r.id)}<span class="muted" style="font-size:12px">${ADMIN.users.filter(u => u.role === r.id).length} pengguna</span></div><div style="font-size:13px">${esc(r.desc)}</div><div class="faint" style="font-size:12px">${r.perms.includes('*') ? 'Semua izin' : r.perms.length + ' izin'}</div></div>`).join('')}</div>
+      <div class="card"><div class="table-wrap"><table class="tbl perm-matrix"><thead><tr><th>Izin</th>${ADMIN.roles.map(r => `<th style="text-align:center">${esc(r.name)}</th>`).join('')}</tr></thead><tbody>
+      ${rows(mods, 'AKSES MODUL')}${rows(ACTION_PERMS, 'AKSI')}</tbody></table></div></div>`;
   } else {
-    body = `<div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>Waktu</th><th>Pengguna</th><th>Aktivitas</th><th>Detail</th></tr></thead><tbody>
-      ${AUTH.audit.slice(0, 200).map(a => `<tr><td class="mono" style="color:var(--ink-500)">${fmtDT(a.t)}</td><td class="strong">${esc(a.who)}</td><td>${/Gagal|ditolak|terkunci/i.test(a.event) ? `<span class="pill bad">${esc(a.event)}</span>` : /Masuk/.test(a.event) ? `<span class="pill ok">${esc(a.event)}</span>` : `<span class="pill info">${esc(a.event)}</span>`}</td><td class="muted">${esc(a.detail)}</td></tr>`).join('') || `<tr><td colspan="4">${emptyState('history', 'Belum ada aktivitas.')}</td></tr>`}
+    body = `<div class="row between"><div class="muted">200 aktivitas terakhir dari server, termasuk alamat IP.</div><button class="btn btn-sm" data-act="admin-reload">${icon('refresh-cw', 14)} Muat ulang</button></div>
+      <div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>Waktu</th><th>Pengguna</th><th>Aktivitas</th><th>Detail</th><th>IP</th></tr></thead><tbody>
+      ${ADMIN.logs.map(a => `<tr><td class="mono" style="color:var(--ink-500)">${fmtDT(a.t)}</td><td class="strong">${esc(a.who)}</td><td>${/Gagal|ditolak|terkunci/i.test(a.event) ? `<span class="pill bad">${esc(a.event)}</span>` : /Masuk/.test(a.event) ? `<span class="pill ok">${esc(a.event)}</span>` : `<span class="pill info">${esc(a.event)}</span>`}</td><td class="muted">${esc(a.detail)}</td><td class="mono" style="color:var(--ink-500)">${esc(a.ip)}</td></tr>`).join('') || `<tr><td colspan="5">${emptyState('history', 'Belum ada aktivitas.')}</td></tr>`}
       </tbody></table></div></div>`;
   }
   return `<div class="tabs">${tabs.map(([k, l, n]) => `<button type="button" class="${T === k ? 'on' : ''}" data-act="users-tab" data-v="${k}">${l}<span class="count">${n}</span></button>`).join('')}</div>${body}`;
 };
-VIEWS.pengguna.hero = () => ({ metric: activeUsers().length, label: 'Pengguna aktif' });
-ACT['users-tab'] = el => { UI.users.tab = el.dataset.v; render(); };
-ACT['role-toggle'] = el => {
-  const r = roleById(el.dataset.role), p = el.dataset.perm;
-  if (r.locked) return;
-  if (el.checked) { if (!r.perms.includes(p)) r.perms.push(p); } else r.perms = r.perms.filter(x => x !== p);
-  audit('Hak akses diubah', `${r.name}: ${el.checked ? '+' : '−'} ${permLabel(p)}`);
-  saveAuth(); renderNav();
-  toast(`${r.name} ${el.checked ? 'sekarang bisa' : 'tidak lagi bisa'}: ${permLabel(p).toLowerCase()}.`, 'shield');
+VIEWS.pengguna.hero = () => ({ metric: ADMIN.users ? ADMIN.users.filter(u => u.active).length : '…', label: 'Pengguna aktif' });
+ACT['users-tab'] = el => { UI.users.tab = el.dataset.v; if (el.dataset.v === 'log') { ADMIN.users = null; } render(); };
+ACT['admin-reload'] = () => { ADMIN.users = null; render(); };
+ACT['role-toggle'] = async el => {
+  const role = ADMIN.roles.find(r => r.id === el.dataset.role), p = el.dataset.perm, granted = el.checked;
+  el.disabled = true;
+  const r = await api('PUT', `roles/${role.id}/permissions`, { permission: p, granted });
+  el.disabled = false;
+  if (!r.ok) { el.checked = !granted; toast(apiErr(r), 'ban'); return; }
+  if (granted) { if (!role.perms.includes(p)) role.perms.push(p); } else role.perms = role.perms.filter(x => x !== p);
+  // izin peran sendiri berubah → ambil ulang izin dari server
+  if (role.id === currentUser().role) { const me = await api('GET', 'auth/me'); if (me.ok) { setMe(me.data); renderNav(); } }
+  toast(`${role.name} ${granted ? 'sekarang bisa' : 'tidak lagi bisa'}: ${permLabel(p).toLowerCase()}.`, 'shield');
 };
 ACT['user-edit'] = el => {
-  const u = el.dataset.id ? userById(el.dataset.id) : null;
-  const isNew = !u;
-  const d = u || { id: nextId(AUTH.users, 'U'), name: '', email: '', role: 'kasir', active: true };
+  const u = el.dataset.id ? ADMIN.users.find(x => x.id === +el.dataset.id) : null;
+  const d = u || { name: '', email: '', role: 'kasir', active: true };
+  const roles = ADMIN.roles.filter(r => r.id !== 'owner' || currentUser().role === 'owner');
   openModal({
-    title: isNew ? 'Tambah pengguna' : 'Ubah pengguna',
+    title: u ? 'Ubah pengguna' : 'Tambah pengguna',
     body: `<div class="form-grid">
       <div class="field full"><label for="us-name">Nama lengkap</label><input class="input" id="us-name" value="${esc(d.name)}" autofocus></div>
-      <div class="field"><label for="us-email">Email</label><input class="input" id="us-email" type="email" value="${esc(d.email)}" placeholder="nama@dapurnusantara.id"></div>
-      <div class="field"><label for="us-role">Peran</label><select class="input" id="us-role">${opts(AUTH.roles.map(r => [r.id, r.name]), d.role)}</select></div>
-      <div class="field"><label for="us-pw">${isNew ? 'Kata sandi awal' : 'Atur ulang kata sandi'}</label><input class="input" id="us-pw" type="password" autocomplete="new-password" placeholder="${isNew ? 'Minimal 8 karakter' : 'Kosongkan jika tidak diubah'}"></div>
-      <div class="field"><label for="us-pin">PIN kasir (6 digit)</label><input class="input num" id="us-pin" type="password" inputmode="numeric" maxlength="6" placeholder="${u && u.pin ? 'Kosongkan jika tidak diubah' : 'Opsional'}"></div>
+      <div class="field"><label for="us-email">Email (untuk masuk)</label><input class="input" id="us-email" type="email" value="${esc(d.email)}" placeholder="nama@usaha.id"></div>
+      <div class="field"><label for="us-role">Peran</label><select class="input" id="us-role">${opts(roles.map(r => [r.id, r.name]), d.role)}</select></div>
+      <div class="field"><label for="us-pw">${u ? 'Atur ulang kata sandi' : 'Kata sandi awal'}</label><input class="input" id="us-pw" type="password" autocomplete="new-password" placeholder="${u ? 'Kosongkan jika tidak diubah' : 'Minimal 8 karakter'}"></div>
+      <div class="field"><label for="us-pin">PIN kasir (6 digit)</label><input class="input num" id="us-pin" type="password" inputmode="numeric" maxlength="6" placeholder="${u && u.has_pin ? 'Kosongkan jika tidak diubah' : 'Opsional'}"></div>
       <label class="switch full"><input type="checkbox" id="us-active" ${d.active ? 'checked' : ''}> Akun aktif dan boleh masuk</label></div>
+      <div class="faint" style="font-size:12px">Kata sandi awal atau yang diatur ulang wajib diganti pengguna saat pertama masuk. Menonaktifkan akun langsung mengakhiri semua sesinya.</div>
       <div id="us-err"></div>`,
-    foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="user-save" data-id="${d.id}" data-new="${isNew ? '1' : ''}">${icon('save', 16)} Simpan</button>`,
+    foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="user-save" data-id="${u ? u.id : ''}">${icon('save', 16)} Simpan</button>`,
   });
 };
-ACT['user-save'] = el => {
+ACT['user-save'] = async el => {
   const v = id => document.getElementById(id).value.trim();
-  const fail = m => { document.getElementById('us-err').innerHTML = `<div class="alert bad">${icon('triangle-alert', 16)}<div>${m}</div></div>`; };
-  const isNew = !!el.dataset.new, id = el.dataset.id;
-  const name = v('us-name'), email = v('us-email').toLowerCase(), role = v('us-role'), pw = document.getElementById('us-pw').value, pin = v('us-pin');
-  const active = document.getElementById('us-active').checked;
-  if (!name) return fail('Nama wajib diisi.');
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('Format email tidak valid.');
-  if (AUTH.users.some(x => x.email.toLowerCase() === email && x.id !== id)) return fail('Email sudah dipakai pengguna lain.');
-  if (isNew && pw.length < 8) return fail('Kata sandi awal minimal 8 karakter.');
-  if (!isNew && pw && pw.length < 8) return fail('Kata sandi baru minimal 8 karakter.');
-  if (pin && !/^\d{6}$/.test(pin)) return fail('PIN harus 6 digit angka.');
-  const me = currentUser();
-  const target = userById(id);
-  if (me.role !== 'owner' && (role === 'owner' || (target && target.role === 'owner'))) return fail('Hanya Pemilik yang bisa membuat, mengubah, atau menunjuk akun Pemilik.');
-  if (id === me.id && !active) return fail('Anda tidak bisa menonaktifkan akun sendiri.');
-  const owners = AUTH.users.filter(x => x.role === 'owner' && x.active && x.id !== id);
-  if (!owners.length && (role !== 'owner' || !active)) return fail('Harus ada minimal satu Pemilik yang aktif.');
-  let u = userById(id);
-  if (!u) { u = { id, lastLogin: null, pin: null }; AUTH.users.push(u); }
-  const changes = [];
-  if (!isNew && u.role !== role) changes.push('peran → ' + roleById(role).name);
-  if (!isNew && u.active !== active) changes.push(active ? 'diaktifkan' : 'dinonaktifkan');
-  if (!isNew && pw) changes.push('kata sandi diatur ulang');
-  if (!isNew && pin) changes.push('PIN diatur ulang');
-  Object.assign(u, { name, email, role, active });
-  if (pw) u.pw = hashSecret(u.id, 'pw', pw);
-  if (pin) u.pin = hashSecret(u.id, 'pin', pin);
-  audit(isNew ? 'Pengguna ditambah' : 'Pengguna diubah', `${name}${isNew ? ' sebagai ' + roleById(role).name : changes.length ? ': ' + changes.join(', ') : ''}`);
-  saveAuth(); closeModal(true); render(); toast(`Data ${name} disimpan.`);
+  const body = { name: v('us-name'), email: v('us-email'), role: v('us-role'), password: document.getElementById('us-pw').value, pin: v('us-pin'), active: document.getElementById('us-active').checked };
+  const id = el.dataset.id;
+  el.disabled = true;
+  const r = await api(id ? 'PUT' : 'POST', id ? 'users/' + id : 'users', body);
+  el.disabled = false;
+  if (!r.ok) { document.getElementById('us-err').innerHTML = `<div class="alert bad">${icon('triangle-alert', 16)}<div>${esc(apiErr(r))}</div></div>`; return; }
+  closeModal(true); ADMIN.users = null; await loadStaff(); render(); toast(`Data ${body.name} disimpan.`);
 };

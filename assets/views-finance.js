@@ -381,8 +381,8 @@ VIEWS.pengaturan = () => {
   <div class="row" style="justify-content:flex-end"><button class="btn btn-primary" data-act="st-save">${icon('save', 16)} Simpan pengaturan</button></div>
   <div class="grid g-2" style="align-items:start">
     <div class="card"><div class="card-h"><h3>Pengguna &amp; hak akses</h3></div><div class="card-b stack">
-      <div class="muted">${activeUsers().length} pengguna aktif dalam ${AUTH.roles.length} peran. Akun, PIN kasir, matriks izin, dan log aktivitas dikelola di menu tersendiri.</div>
-      <div class="row">${AUTH.roles.map(r => rolePill(r.id)).join('')}</div>
+      <div class="muted">${activeUsers().length} pengguna aktif dalam ${allRoles().length} peran. Akun, PIN kasir, matriks izin, dan log aktivitas dikelola di menu tersendiri.</div>
+      <div class="row">${allRoles().map(r => rolePill(r.id)).join('')}</div>
       <div><button class="btn" data-act="go" data-to="pengguna">${icon('shield', 16)} Buka Pengguna &amp; Akses</button></div></div></div>
     <div class="stack">
       <div class="card"><div class="card-h"><h3>Metode pembayaran</h3></div><div>
