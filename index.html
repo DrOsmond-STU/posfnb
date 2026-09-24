@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Racik POS Resto</title>
+<meta name="description" content="Purwarupa UI/UX aplikasi Point of Sale untuk restoran & F&B: kasir, meja, dapur, resep, pembelian, persediaan, dan laporan keuangan.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+    <div class="brand">
+      <div class="brand-mark">R</div>
+      <div class="brand-text">
+        <div class="brand-name">Racik POS</div>
+        <div class="brand-sub">Resto &amp; F&amp;B</div>
+      </div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">
+      <button type="button" class="collapse-btn" data-act="collapse" title="Ciutkan menu"><span id="collapse-ic"></span><span class="lbl">Ciutkan menu</span></button>
+      <div class="lbl">Purwarupa v1.0 · data demo</div>
+    </div>
+  </aside>
+  <div class="scrim" data-act="nav-close"></div>
+  <div class="main">
+    <header class="topbar">
+      <button type="button" class="icon-btn menu-toggle" data-act="nav-open" aria-label="Buka menu" id="menu-btn"></button>
+      <div>
+        <div class="crumb" id="crumb"></div>
+        <h1 id="page-title">Dasbor</h1>
+      </div>
+      <div class="top-right">
+        <div class="chip-outlet"><span class="dot"></span><span id="outlet-name"></span></div>
+        <button type="button" class="icon-btn" data-act="theme" aria-label="Ganti tema terang/gelap" id="theme-btn"></button>
+        <button type="button" class="icon-btn" data-act="go" data-to="dapur" aria-label="Pesanan dapur" id="bell-btn"></button>
+        <div class="avatar" id="avatar">AP</div>
+        <div class="who" id="who"></div>
+      </div>
+    </header>
+    <main class="content" id="view"></main>
+  </div>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="tip" id="tip" hidden></div>
+
+<script src="assets/icons.js"></script>
+<script src="assets/data.js"></script>
+<script src="assets/ui.js"></script>
+<script src="assets/views-ops.js"></script>
+<script src="assets/views-stock.js"></script>
+<script src="assets/views-finance.js"></script>
+<script>boot();</script>
+</body>
+</html>
