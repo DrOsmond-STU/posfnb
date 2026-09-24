@@ -4,6 +4,10 @@ Purwarupa interaktif aplikasi Point of Sale untuk restoran dan usaha F&B. Alurny
 
 Aplikasi ini murni HTML, CSS, dan JavaScript tanpa build step dan tanpa backend. Semua data demo dibuat otomatis di browser.
 
+## Dokumentasi pengembangan
+
+Spesifikasi lengkap untuk membangun versi produksi ada di folder [`docs/`](docs/README.md): ringkasan produk, kebutuhan fungsional, peran & hak akses, alur bisnis, aturan perhitungan & akuntansi, arsitektur, skema basis data, spesifikasi API, kebutuhan non-fungsional, panduan UI, rencana pengembangan, dan daftar keputusan terbuka.
+
 ## Cara menjalankan
 
 ```bash
