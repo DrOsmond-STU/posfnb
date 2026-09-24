@@ -169,7 +169,8 @@ const modalEl = () => document.getElementById('overlay');
 function toast(msg, ic) {
   const t = document.createElement('div');
   t.className = 'toast';
-  t.innerHTML = icon(ic || 'circle-check') + `<span>${msg}</span>`;
+  t.innerHTML = icon(ic || 'circle-check') + '<span></span>';
+  t.lastChild.textContent = msg;   // pesan bisa memuat nama yang diketik pengguna: jangan dirender sebagai HTML
   document.getElementById('toasts').appendChild(t);
   setTimeout(() => t.remove(), 3200);
 }
@@ -327,6 +328,7 @@ function enterApp() {
 }
 async function boot() {
   loadState();
+  try { localStorage.removeItem('racikpos-auth-v1'); } catch (e) { /* abaikan */ }   // sisa autentikasi purwarupa lama
   try {
     if (localStorage.getItem('racikpos-collapsed')) document.getElementById('app').classList.add('collapsed');
   } catch (e) { /* abaikan */ }

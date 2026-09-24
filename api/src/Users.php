@@ -44,6 +44,7 @@ final class Users
         }
         $fail = function (string $m) { throw new ApiError(422, 'VALIDATION_FAILED', $m); };
         if ($name === '') $fail('Nama wajib diisi.');
+        if (preg_match('/[<>\p{Cc}]/u', $name)) $fail('Nama tidak boleh memuat karakter < > atau karakter kendali.');
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $fail('Format email tidak valid.');
         if (!Db::one('SELECT id FROM roles WHERE id = ?', [$roleId])) $fail('Peran tidak dikenal.');
         if (Db::one('SELECT id FROM users WHERE email = ? AND id <> ?', [$email, $id ?? 0])) $fail('Email sudah dipakai pengguna lain.');

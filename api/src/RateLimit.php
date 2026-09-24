@@ -33,6 +33,10 @@ final class RateLimit
             $row = Db::one('SELECT * FROM login_attempts WHERE k = ? FOR UPDATE', [$key]);
             $now = time();
             if (!$row) {
+                // bersihkan kunci lama sesekali agar tabel tidak tumbuh terus
+                if (random_int(1, 50) === 1) {
+                    Db::run('DELETE FROM login_attempts WHERE window_start < ? AND (locked_until IS NULL OR locked_until < ?)', [now_utc(-86400), now_utc()]);
+                }
                 $row = ['fails' => 0, 'lock_count' => 0, 'window_start' => now_utc(), 'locked_until' => null];
                 Db::run('INSERT INTO login_attempts (k, fails, lock_count, window_start) VALUES (?,0,0,?)', [$key, $row['window_start']]);
             }

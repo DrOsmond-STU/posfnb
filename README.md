@@ -83,7 +83,8 @@ Ada dua cara masuk: **email + kata sandi**, atau **PIN kasir 6 digit** untuk ber
 - Mengganti kata sandi mengakhiri sesi lain milik pengguna itu. Menonaktifkan akun langsung mengakhiri semua sesinya.
 - Hanya Pemilik yang bisa menunjuk Pemilik lain, dan minimal satu Pemilik harus tetap aktif.
 - Persetujuan diskon, void, dan batal bill memakai PIN penyetuju yang diverifikasi server.
-- Setiap aksi penting tercatat di `audit_logs` beserta alamat IP.
+- Setiap aksi penting tercatat di `audit_logs` beserta alamat IP. Catatan yang dilaporkan aplikasi di browser (void, batal bill) dibatasi jenis tertentu dan ditandai sumber **Aplikasi**, sehingga tidak bisa dipakai memalsukan catatan **Server** (masuk, gagal masuk, perubahan akun).
+- Galat PHP tidak pernah ditampilkan di respons (hanya dicatat ke error log); nama pengguna ditolak bila memuat tag HTML; pesan notifikasi di UI dirender sebagai teks, bukan HTML.
 
 ## API autentikasi
 

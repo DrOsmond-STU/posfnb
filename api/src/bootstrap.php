@@ -6,6 +6,18 @@
  */
 declare(strict_types=1);
 
+// Galat PHP tidak boleh tampil di respons (bisa membocorkan path/kredensial); dicatat ke error_log saja.
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+error_reporting(E_ALL);
+set_error_handler(function (int $no, string $str, string $file, int $line): bool {
+    if ($no & (E_DEPRECATED | E_USER_DEPRECATED)) {
+        error_log("[racikpos] deprecated: $str @ $file:$line");
+        return true;
+    }
+    throw new ErrorException($str, 0, $no, $file, $line);
+});
+
 // Konfigurasi berisi kredensial DB, jadi tidak pernah disimpan di repositori.
 // Lokasi default: <home>/posfnb-config/config.php (satu tingkat di atas document root).
 function app_config(): array

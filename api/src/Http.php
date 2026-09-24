@@ -73,6 +73,7 @@ final class Http
     public static function json(int $status, array $data): void
     {
         http_response_code($status);
+        header_remove('X-Powered-By');
         header('Content-Type: application/json; charset=utf-8');
         header('Cache-Control: no-store');
         header('X-Content-Type-Options: nosniff');
@@ -98,7 +99,8 @@ final class Http
         $trusted = app_config()['trusted_origin'];
         $host = $_SERVER['HTTP_HOST'] ?? '';
         $ok = ($trusted !== '' && hash_equals($trusted, $origin))
-            || ($host !== '' && ($origin === 'https://' . $host || $origin === 'http://' . $host));
+            || ($host !== '' && $origin === 'https://' . $host)
+            || ($host !== '' && !app_config()['cookie_secure'] && $origin === 'http://' . $host);   // hanya lingkungan lokal tanpa HTTPS
         if (!$ok) {
             throw new ApiError(403, 'BAD_ORIGIN', 'Permintaan lintas situs ditolak.');
         }

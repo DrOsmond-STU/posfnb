@@ -290,6 +290,7 @@ final class Auth
 
     public static function lock(): void
     {
+        Http::assertSameOrigin();
         $s = self::require(true);
         if ($s['locked_at'] === null) {
             Db::run('UPDATE sessions SET locked_at = ? WHERE id = ?', [now_utc(), $s['sid']]);
@@ -326,6 +327,7 @@ final class Auth
 
     public static function logout(): void
     {
+        Http::assertSameOrigin();
         $s = self::session();
         if ($s) {
             $sent = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
@@ -419,13 +421,16 @@ final class Auth
         }, $rows)]);
     }
 
-    /** Aktivitas dari modul lain di peramban (void, batal bill, akses ditolak, dll.). */
+    /** Jenis aktivitas yang boleh dilaporkan klien; selain ini ditolak agar log tidak bisa dipalsukan. */
+    private const CLIENT_EVENTS = ['Akses ditolak', 'Bill dibatalkan', 'Void transaksi', 'Biaya dibatalkan', 'Bahan rusak dibatalkan'];
+
+    /** Aktivitas dari modul lain di peramban (void, batal bill, akses ditolak). Selalu ditandai source=client. */
     public static function clientAudit(): void
     {
         $s = self::require();
         $event = Http::str('event', 60);
-        if ($event === '') {
-            throw new ApiError(422, 'VALIDATION_FAILED', 'Aktivitas kosong.');
+        if (!in_array($event, self::CLIENT_EVENTS, true)) {
+            throw new ApiError(422, 'VALIDATION_FAILED', 'Jenis aktivitas tidak dikenal.');
         }
         Audit::log($s, $event, Http::str('detail', 500), 'client');
         Http::json(201, ['ok' => true]);
