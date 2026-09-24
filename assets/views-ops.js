@@ -44,10 +44,6 @@ VIEWS.dashboard = () => {
   const openVal = sumBy(S.bills, b => calcBill(b.items, b.type, b.discPct).total);
 
   return `
-  <div class="row between">
-    <div><div class="muted">${fmtDay(Date.now())}</div><div style="font-size:20px;font-weight:800">Halo, ${esc(S.session.manager.split(' ')[0])}. Ini kondisi ${esc(S.settings.outlet)} hari ini.</div></div>
-    <div class="row"><button class="btn" data-act="go" data-to="lap-penjualan">${icon('chart-column', 16)} Laporan</button><button class="btn btn-primary" data-act="go" data-to="kasir">${icon('shopping-cart', 16)} Buka Kasir</button></div>
-  </div>
   <div class="grid g-4">
     ${kpi('banknote', 'Penjualan bersih hari ini', rp(net), `${delta(net, netY)} vs kemarin (${rpShort(netY)})`)}
     ${kpi('receipt', 'Transaksi hari ini', nf.format(today.length) + ' struk', `Rata-rata ${rp(avg)} / struk`, true)}

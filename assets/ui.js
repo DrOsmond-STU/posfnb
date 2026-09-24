@@ -70,12 +70,23 @@ function newCart() {
 
 /* ---------- Navigasi ---------- */
 const NAV = [
-  { group: 'Ringkasan', items: [['dashboard', 'Dasbor', 'layout-dashboard']] },
-  { group: 'Operasional', items: [['kasir', 'Kasir (POS)', 'shopping-cart'], ['meja', 'Meja & Pesanan', 'armchair'], ['dapur', 'Layar Dapur', 'chef-hat'], ['penjualan', 'Riwayat Penjualan', 'receipt']] },
-  { group: 'Menu & Produksi', items: [['menu', 'Standar Menu & Resep', 'book-open']] },
-  { group: 'Pembelian & Stok', items: [['pembelian', 'Pembelian', 'truck'], ['pemasok', 'Pemasok', 'store'], ['persediaan', 'Persediaan', 'boxes']] },
-  { group: 'Keuangan & Laporan', items: [['kas', 'Kas & Biaya', 'wallet'], ['lap-penjualan', 'Laporan Penjualan', 'chart-column'], ['lap-keuangan', 'Laporan Keuangan', 'landmark'], ['lap-persediaan', 'Laporan Persediaan', 'clipboard-list']] },
-  { group: 'Sistem', items: [['pengaturan', 'Pengaturan', 'settings']] },
+  { group: 'Ringkasan', items: [['dashboard', 'Dasbor', 'layout-dashboard', '']] },
+  { group: 'Operasional', items: [
+    ['kasir', 'Kasir (POS)', 'shopping-cart', 'Catat pesanan dine-in, take away, dan online, lalu terima pembayaran.'],
+    ['meja', 'Meja & Pesanan', 'armchair', 'Denah meja per area, bill yang masih terbuka, dan reservasi hari ini.'],
+    ['dapur', 'Layar Dapur', 'chef-hat', 'Tiket pesanan dari kasir, diurutkan dari yang paling lama menunggu.'],
+    ['penjualan', 'Riwayat Penjualan', 'receipt', 'Semua struk yang sudah dibayar, lengkap dengan HPP per transaksi.']] },
+  { group: 'Menu & Produksi', items: [['menu', 'Standar Menu & Resep', 'book-open', 'Takaran bahan per porsi yang menjadi dasar HPP, food cost, dan pemotongan stok otomatis.']] },
+  { group: 'Pembelian & Stok', items: [
+    ['pembelian', 'Pembelian', 'truck', 'Purchase order, penerimaan barang, hutang pemasok, dan saran pembelian.'],
+    ['pemasok', 'Pemasok', 'store', 'Data pemasok, termin pembayaran, dan nilai pembelian berjalan.'],
+    ['persediaan', 'Persediaan', 'boxes', 'Stok bahan baku, kartu stok, stok opname, dan bahan rusak.']] },
+  { group: 'Keuangan & Laporan', items: [
+    ['kas', 'Kas & Biaya', 'wallet', 'Saldo kas dan bank, biaya operasional, setoran kas, dan setoran PB1.'],
+    ['lap-penjualan', 'Laporan Penjualan', 'chart-column', 'Tren penjualan, jam sibuk, metode bayar, dan menu engineering.'],
+    ['lap-keuangan', 'Laporan Keuangan', 'landmark', 'Laba rugi, neraca, arus kas, jurnal umum, dan buku besar dari transaksi otomatis.'],
+    ['lap-persediaan', 'Laporan Persediaan', 'clipboard-list', 'Mutasi setiap bahan dari saldo awal sampai saldo akhir, direkonsiliasi ke akun persediaan.']] },
+  { group: 'Sistem', items: [['pengaturan', 'Pengaturan', 'settings', 'Profil outlet, pajak dan service charge, pengguna, dan perangkat.']] },
 ];
 const VIEWS = {};
 const ACT = {};
@@ -96,15 +107,21 @@ function renderNav() {
     }).join('')).join('');
 }
 function navInfo(key) {
-  for (const g of NAV) for (const it of g.items) if (it[0] === key) return { group: g.group, title: it[1] };
-  return { group: '', title: '' };
+  for (const g of NAV) for (const it of g.items) if (it[0] === key) return { group: g.group, title: it[1], desc: it[3] };
+  return { group: '', title: '', desc: '' };
 }
 
 function render() {
   const key = VIEWS[current] ? current : 'dashboard';
   const info = navInfo(key);
-  document.getElementById('page-title').textContent = info.title;
-  document.getElementById('crumb').textContent = info.group;
+  const h = VIEWS[key].hero ? VIEWS[key].hero() : {};
+  document.getElementById('page-title').textContent = h.title || info.title;
+  document.getElementById('crumb').textContent = info.group + ' · ' + S.settings.outlet + ' ' + S.settings.branch.replace('Cabang ', '');
+  document.getElementById('page-desc').textContent = h.desc || info.desc;
+  document.getElementById('hero').classList.toggle('compact', !!VIEWS[key].compact);
+  document.getElementById('hero-right').innerHTML =
+    (h.metric != null ? `<div class="hero-metric"><span class="num">${h.metric}</span><span class="lbl">${h.label}</span></div>` : '') +
+    (h.actions ? `<div class="hero-actions">${h.actions}</div>` : '');
   document.title = info.title + ' · Racik POS Resto';
   renderNav();
   const el = document.getElementById('view');
@@ -263,31 +280,30 @@ ACT['collapse'] = () => {
   app.classList.toggle('collapsed');
   try { localStorage.setItem('racikpos-collapsed', app.classList.contains('collapsed') ? '1' : ''); } catch (e) { /* abaikan */ }
 };
-ACT['theme'] = () => {
-  const root = document.documentElement;
-  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-  root.dataset.theme = dark ? 'light' : 'dark';
-  try { localStorage.setItem('racikpos-theme', root.dataset.theme); } catch (e) { /* abaikan */ }
+ACT['theme-set'] = el => {
+  const v = el.dataset.v, root = document.documentElement;
+  if (v === 'system') delete root.dataset.theme; else root.dataset.theme = v;
+  try { if (v === 'system') localStorage.removeItem('racikpos-theme'); else localStorage.setItem('racikpos-theme', v); } catch (e) { /* abaikan */ }
   paintChrome();
 };
 
 function paintChrome() {
-  const root = document.documentElement;
-  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-  document.getElementById('theme-btn').innerHTML = icon(dark ? 'sun' : 'moon');
+  const cur = document.documentElement.dataset.theme || 'system';
+  document.getElementById('theme-switch').innerHTML = [['light', 'sun', 'Terang'], ['dark', 'moon', 'Gelap'], ['system', 'monitor', 'Ikuti sistem']]
+    .map(([v, ic, t]) => `<button type="button" class="${cur === v ? 'on' : ''}" data-act="theme-set" data-v="${v}" title="${t}" aria-label="Tema ${t}" aria-pressed="${cur === v}">${icon(ic, 15)}</button>`).join('');
+  document.getElementById('brand-mark').innerHTML = icon('chef-hat', 22);
   document.getElementById('menu-btn').innerHTML = icon('menu');
-  document.getElementById('collapse-ic').innerHTML = icon('chevron-left');
-  const pending = S.kds.filter(k => k.status !== 'selesai').length;
-  document.getElementById('bell-btn').innerHTML = icon('bell') + (pending ? '<span class="pip"></span>' : '');
-  document.getElementById('outlet-name').textContent = S.settings.outlet + ' · ' + S.settings.branch;
-  document.getElementById('who').innerHTML = `<b>${esc(S.session.manager)}</b><span class="muted">Manajer · ${esc(S.session.shift)}</span>`;
+  document.getElementById('collapse-ic').innerHTML = icon('chevron-left', 17);
+  const m = S.session.manager;
+  document.getElementById('avatar').textContent = m.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase();
+  document.getElementById('u-name').textContent = m;
+  document.getElementById('u-role').textContent = 'Manajer · ' + S.settings.branch;
 }
 
 let kdsTimer = null;
 function boot() {
   loadState();
   try {
-    const th = localStorage.getItem('racikpos-theme'); if (th) document.documentElement.dataset.theme = th;
     if (localStorage.getItem('racikpos-collapsed')) document.getElementById('app').classList.add('collapsed');
   } catch (e) { /* abaikan */ }
   UI.cart = newCart();

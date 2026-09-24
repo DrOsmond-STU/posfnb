@@ -99,7 +99,7 @@ VIEWS['lap-penjualan'] = () => {
   // metode & tipe
   const byPay = PAY_METHODS.map(p => ({ p, v: sumBy(list.filter(s => s.method === p.id), s => s.total), n: list.filter(s => s.method === p.id).length }));
   const payTot = sumBy(byPay, x => x.v) || 1;
-  const payColors = ['var(--chart-1)', 'var(--chart-2)', 'var(--text)', 'var(--faint)'];
+  const payColors = ['var(--brand-700)', 'var(--brand-400)', 'var(--ink-500)', 'var(--border-200)'];
   const byType = ['dinein', 'takeaway', 'online'].map(k => ({ label: TYPE_LABEL[k], value: sumBy(list.filter(s => s.type === k), s => s.net), sub: list.filter(s => s.type === k).length + ' trx' }));
   // per menu + menu engineering
   const mm = {};
@@ -392,3 +392,33 @@ ACT['reset-ask'] = () => openModal({ title: 'Atur ulang data demo?', size: 'sm',
   body: '<div>Semua transaksi, PO, dan perubahan resep yang Anda buat di purwarupa ini akan dihapus dan diganti data demo baru.</div>',
   foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="reset-do">${icon('refresh-cw', 16)} Atur ulang</button>` });
 ACT['reset-do'] = () => { resetState(); UI.cart = newCart(); closeModal(true); render(); paintChrome(); toast('Data demo dibuat ulang.'); };
+
+/* =========================== HERO PER HALAMAN ===========================
+   Judul besar bergradasi di atas setiap halaman, mengikuti pola KG SafeGuard:
+   eyebrow grup modul, judul, deskripsi, dan satu angka utama di kanan. */
+VIEWS.kasir.compact = true;
+VIEWS.dapur.compact = true;
+VIEWS.dashboard.hero = () => {
+  const net = sumBy(salesIn(range('today')), s => s.net);
+  return {
+    title: 'Halo, ' + S.session.manager.split(' ')[0],
+    desc: fmtDay(Date.now()) + '. Ringkasan penjualan, stok, dan operasional ' + S.settings.outlet + ' hari ini.',
+    metric: rpShort(net), label: 'Penjualan bersih hari ini',
+    actions: `<button class="btn btn-onhero" data-act="go" data-to="lap-penjualan">${icon('chart-column', 16)} Laporan</button><button class="btn btn-hero" data-act="go" data-to="kasir">${icon('shopping-cart', 16)} Buka Kasir</button>`,
+  };
+};
+VIEWS.kasir.hero = () => ({ metric: nf.format(salesIn(range('today')).length), label: 'Struk hari ini' });
+VIEWS.meja.hero = () => ({ metric: S.tables.filter(t => t.status === 'terisi').length + '/' + S.tables.length, label: 'Meja terisi' });
+VIEWS.dapur.hero = () => ({ metric: S.kds.filter(k => k.status !== 'selesai').length, label: 'Tiket aktif' });
+VIEWS.penjualan.hero = () => ({ metric: rpShort(sumBy(salesIn(range('today')), s => s.total)), label: 'Diterima hari ini' });
+VIEWS.menu.hero = () => {
+  const act = S.menu.filter(m => m.active);
+  return { metric: pct(sumBy(act, m => recipeCost(m) / m.price * 100) / (act.length || 1)), label: 'Rata-rata food cost' };
+};
+VIEWS.pembelian.hero = () => ({ metric: rpShort(sumBy(S.pos, poOutstanding)), label: 'Hutang pemasok' });
+VIEWS.pemasok.hero = () => ({ metric: S.suppliers.length, label: 'Pemasok aktif' });
+VIEWS.persediaan.hero = () => ({ metric: rpShort(sumBy(S.ingredients, i => Math.max(0, i.stock) * i.avg)), label: 'Nilai persediaan' });
+VIEWS.kas.hero = () => ({ metric: rpShort(accBalance('1-101') + accBalance('1-102')), label: 'Kas + bank' });
+VIEWS['lap-penjualan'].hero = () => ({ metric: rpShort(sumBy(salesIn(range(UI.rsales.period)), s => s.net)), label: 'Penjualan bersih · ' + PERIODS[UI.rsales.period] });
+VIEWS['lap-keuangan'].hero = () => ({ metric: rpShort(plData(range('month').from, range('month').to).np), label: 'Laba bersih bulan ini' });
+VIEWS['lap-persediaan'].hero = () => ({ metric: rpShort(accBalance('1-104')), label: 'Saldo akun persediaan' });

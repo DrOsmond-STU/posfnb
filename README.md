@@ -54,6 +54,12 @@ assets/views-finance.js  Kas & Biaya, Laporan, Pengaturan
 
 ## Tema
 
-Tema memakai merah dan emas, terinspirasi identitas Khong Guan. Untuk menyesuaikan dengan referensi, ubah token `--brand*`, `--gold*`, dan `--side-*` di bagian atas `assets/style.css`. Mode gelap ikut dari pengaturan sistem, atau bisa diganti lewat tombol bulan/matahari di topbar.
+Tema mengikuti design system **Khong Guan QHSE** yang dipakai KG SafeGuard (khongguan.semestateknologiutama.com):
+
+- **Warna:** tangga biru merek (`--brand-050` sampai `--brand-900`) dan gradasi hero `#062b63` ke `#1a7bd4`.
+- **Huruf:** Plus Jakarta Sans untuk judul, IBM Plex Sans untuk teks, IBM Plex Mono untuk angka.
+- **Komponen:** bilah sisi bergradasi dengan menu aktif berwarna putih, hero bergradasi di setiap halaman, dan chip status bergaris kiri.
+
+Token aslinya disalin apa adanya ke bagian atas `assets/style.css`, lalu dipetakan ke nama token Racik POS. Mode terang, gelap, dan ikut sistem bisa dipilih di bilah sisi.
 
 Semua nama usaha, pemasok, dan transaksi adalah data contoh.
