@@ -120,6 +120,8 @@
 
 /* ---------- 3. Komponen ---------- */
 *, *::before, *::after { box-sizing: border-box; }
+/* atribut hidden harus selalu menang atas display: grid/flex milik komponen */
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--surface-100); color: var(--ink-700);
@@ -577,7 +579,6 @@ table.tbl { width: 100%; border-collapse: collapse; }
 
 /* ---------- Autentikasi (mengikuti layar masuk KG SafeGuard) ---------- */
 .login { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 100%; }
-.login[hidden] { display: none; }
 .login-brandside {
   position: sticky; top: 0; height: 100vh; overflow: hidden; color: var(--ink-on-brand);
   background: linear-gradient(150deg, var(--grad-hero-from), var(--grad-hero-to));
@@ -590,13 +591,13 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .login-claim p { margin: 0; color: var(--brand-300); font-size: 14px; }
 .login-claim blockquote { margin: var(--space-6) 0 0; padding-left: var(--space-4); border-left: 3px solid var(--brand-400); color: var(--brand-300); font-size: 15px; line-height: 23px; }
 .login-pattern { position: absolute; right: -40px; top: var(--space-8); width: 320px; height: 140px; color: #fff; pointer-events: none; }
-.login-formside { display: flex; flex-direction: column; align-items: center; padding: var(--space-6) var(--space-6) var(--space-8); background: var(--surface-100); }
-.login-prefs { width: 100%; max-width: 440px; display: flex; justify-content: flex-end; margin-bottom: var(--space-6); }
+.login-formside { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--space-4) var(--space-6); background: var(--surface-100); }
+.login-prefs { width: 100%; max-width: 460px; display: flex; justify-content: flex-end; margin-bottom: var(--space-4); }
 .theme-switch.on-light { background: var(--surface-200); }
 .theme-switch.on-light button { color: var(--ink-500); }
 .theme-switch.on-light button:hover { color: var(--ink-900); }
 .theme-switch.on-light button.on { background: var(--surface-000); color: var(--brand-700); box-shadow: var(--shadow-float-sm); }
-.login-card { width: 100%; max-width: 440px; margin: auto 0; background: var(--surface-000); border: 1px solid var(--border-100); border-radius: var(--radius-xl); box-shadow: var(--shadow-card); padding: var(--space-7); }
+.login-card { width: 100%; max-width: 460px; background: var(--surface-000); border: 1px solid var(--border-100); border-radius: var(--radius-xl); box-shadow: var(--shadow-card); padding: var(--space-7); }
 .login-card h1 { font-family: var(--font-display); font-size: 24px; line-height: 30px; font-weight: 700; color: var(--ink-900); margin: 0; }
 .login-sub { font-size: 13px; color: var(--ink-500); margin: 4px 0 var(--space-5); }
 #login-form { display: flex; flex-direction: column; gap: var(--space-4); }
@@ -613,7 +614,10 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .login-demo .lbl { font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-500); }
 .login-demo p { font-size: 12px; line-height: 18px; color: var(--ink-500); margin: 6px 0 var(--space-3); }
 code { font-family: var(--font-mono); font-size: 12px; color: var(--brand-700); background: var(--brand-050); padding: 1px 5px; border-radius: var(--radius-xs); }
-.demo-list { display: flex; flex-direction: column; gap: 6px; }
+.demo-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.demo-acct { min-height: 44px; padding: 6px 10px; gap: var(--space-2); }
+.demo-acct.off { opacity: .6; }
+.demo-acct .rl .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; background: currentColor; }
 .demo-acct, .pin-user { display: flex; align-items: center; gap: var(--space-3); width: 100%; cursor: pointer; text-align: left; background: var(--surface-000); border: 1px solid var(--border-100); border-radius: var(--radius-md); padding: 8px var(--space-3); box-shadow: var(--shadow-float-sm); min-height: 46px; }
 .demo-acct:hover, .pin-user:hover { border-color: var(--brand-400); background: var(--brand-050); }
 .demo-acct .av, .pin-user .av { width: 30px; height: 30px; border-radius: var(--radius-pill); flex: none; background: var(--brand-100); color: var(--brand-700); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
@@ -657,7 +661,7 @@ code { font-family: var(--font-mono); font-size: 12px; color: var(--brand-700); 
   .login-metric { font-size: 38px; line-height: 44px; }
   .login-claim h2 { font-size: 20px; line-height: 26px; }
   .login-claim blockquote, .login-pattern { display: none; }
-  .login-formside { padding: var(--space-5) var(--space-4) var(--space-8); }
+  .login-formside { min-height: 0; justify-content: flex-start; padding: var(--space-5) var(--space-4) var(--space-8); }
   .login-prefs { margin-bottom: var(--space-4); }
   .login-card { padding: var(--space-5); }
 }

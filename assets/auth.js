@@ -242,7 +242,7 @@ function loginFormHTML() {
   </form>
   <div class="login-demo"><div class="lbl">Akun demo</div>
     <p>Purwarupa ini belum terhubung ke server. Semua akun demo memakai kata sandi <code>${DEMO_PASSWORD}</code>. Klik salah satu untuk mengisi formulir.</p>
-    <div class="demo-list">${AUTH.users.map(u => `<button type="button" class="demo-acct" data-act="login-demo" data-id="${u.id}"><span class="av">${initials(u.name)}</span><span style="flex:1;min-width:0"><span class="nm">${esc(u.name)}</span><span class="rl">${esc(u.email)}</span></span>${u.active ? rolePill(u.role) : '<span class="pill">Nonaktif</span>'}</button>`).join('')}</div></div>`;
+    <div class="demo-list">${AUTH.users.map(u => `<button type="button" class="demo-acct ${u.active ? '' : 'off'}" data-act="login-demo" data-id="${u.id}" title="${esc(u.email)}"><span class="av">${initials(u.name)}</span><span style="min-width:0"><span class="nm">${esc(u.name)}</span><span class="rl">${u.active ? esc(roleById(u.role).name) : 'Nonaktif · ' + esc(roleById(u.role).name)}</span></span></button>`).join('')}</div></div>`;
 }
 function renderLogin() {
   const el = document.getElementById('login');
@@ -327,10 +327,18 @@ function completeLogin(u, remember, how) {
   toast(`Selamat datang, ${u.name.split(' ')[0]}. Anda masuk sebagai ${roleById(u.role).name}.`, 'circle-check');
 }
 function showLogin() {
-  document.getElementById('app').hidden = true;
-  document.getElementById('login').hidden = false;
+  const app = document.getElementById('app');
+  app.hidden = true;
+  app.classList.remove('nav-open');
+  // kosongkan isi aplikasi supaya data sesi sebelumnya tidak tertinggal di halaman
+  ['view', 'nav', 'hero-right', 'page-desc', 'page-title', 'crumb', 'u-name', 'u-role', 'avatar'].forEach(id => { document.getElementById(id).innerHTML = ''; });
+  document.getElementById('toasts').innerHTML = '';
+  document.getElementById('tip').hidden = true;
   closeModal(true);
+  document.getElementById('login').hidden = false;
+  document.title = 'Masuk · Racik POS Resto';
   renderLogin();
+  window.scrollTo(0, 0);
 }
 function logout(reason, lock) {
   const u = currentUser();
