@@ -19,7 +19,7 @@ final class Audit
                 $source,
                 Http::ip(),
                 Http::userAgent(),
-                gmdate('Y-m-d H:i:s') . sprintf('.%03d', (int) ((microtime(true) * 1000) % 1000)),
+                gmdate('Y-m-d H:i:s') . sprintf('.%03d', (int) fmod(microtime(true) * 1000, 1000)),
             ]
         );
     }
