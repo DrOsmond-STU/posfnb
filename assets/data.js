@@ -218,6 +218,30 @@ function migrateState() {
   S.reservations = S.reservations || [];
   S.suppliers.forEach(x => { if (x.active === undefined) x.active = true; });
 }
+/* Kosongkan data untuk mulai memakai aplikasi dengan data sendiri.
+   Semua transaksi, jurnal, mutasi stok, bill, dan reservasi dihapus. Pengaturan outlet dan denah meja
+   tetap. keepMaster = true: menu, resep, bahan (stok jadi 0), dan pemasok dipertahankan. */
+function clearData(keepMaster) {
+  const old = S;
+  S = {
+    ver: 1, generatedAt: Date.now(), clearedAt: Date.now(),
+    settings: old.settings, session: old.session,
+    suppliers: keepMaster ? old.suppliers : [],
+    ingredients: keepMaster ? old.ingredients.map(i => ({ ...i, stock: 0 })) : [],
+    menu: keepMaster ? old.menu : [],
+    sales: [], pos: [], grns: [], moves: [], journals: [], expenses: [], opnames: [], wastes: [],
+    tables: old.tables.map(t => ({ ...t, status: 'kosong', bill: null, resv: null })),
+    bills: [], kds: [], reservations: [], seq: {},
+  };
+  saveState();
+}
+/* saldo awal kas & bank sebagai setoran modal pemilik */
+function postOpeningCash(t, kas, bank) {
+  if (!(kas > 0) && !(bank > 0)) return;
+  postJournal(t, nextNo('SA', t), 'Saldo awal kas & bank', 'opening', [
+    { acc: '1-101', d: kas || 0 }, { acc: '1-102', d: bank || 0 }, { acc: '3-101', c: (kas || 0) + (bank || 0) },
+  ]);
+}
 function resetState() {
   try { localStorage.removeItem(DB_KEY); } catch (e) { /* abaikan */ }
   S = buildDemo(Date.now());
@@ -453,8 +477,9 @@ function recordWaste(t, ingId, qty, reason, by) {
   S.wastes.push({ no, t, ing: ingId, qty, value: Math.round(val), reason, by: by || 'Chef Wayan', status: 'aktif' });
   postJournal(t, no, `Bahan rusak: ${ing.name} (${reason})`, 'waste', [{ acc: '5-102', d: val }, { acc: '1-104', c: val }]);
 }
-function postOpname(t, counts, by, note) {
-  const no = nextNo('SO', t);
+/* opening = true: stok awal persediaan; selisih dibukukan ke Modal (3-101), bukan ke selisih/biaya bahan */
+function postOpname(t, counts, by, note, opening) {
+  const no = nextNo(opening ? 'SA' : 'SO', t);
   let plus = 0, minus = 0;
   const lines = [];
   for (const c of counts) {
@@ -464,13 +489,14 @@ function postOpname(t, counts, by, note) {
     if (Math.abs(diff) < 1e-9) continue;
     const val = diff * ing.avg;
     ing.stock = c.actual;
-    addMove(t, c.ing, 'opname', diff, val, no, 'Penyesuaian stok opname');
+    addMove(t, c.ing, opening ? 'awal' : 'opname', diff, val, no, opening ? 'Saldo awal persediaan' : 'Penyesuaian stok opname');
     if (val > 0) plus += val; else minus += -val;
   }
-  S.opnames.push({ no, t, by: by || 'Joko Susilo', note: note || '', lines, net: Math.round(plus - minus) });
-  if (Math.round(plus) || Math.round(minus)) postJournal(t, no, 'Penyesuaian stok opname', 'opname', [
-    { acc: '5-102', d: minus }, { acc: '1-104', c: minus },
-    { acc: '1-104', d: plus }, { acc: '5-102', c: plus },
+  S.opnames.push({ no, t, by: by || 'Joko Susilo', note: note || '', lines, net: Math.round(plus - minus), opening: !!opening });
+  const acc = opening ? '3-101' : '5-102';
+  if (Math.round(plus) || Math.round(minus)) postJournal(t, no, opening ? 'Saldo awal persediaan' : 'Penyesuaian stok opname', opening ? 'opening' : 'opname', [
+    { acc, d: minus }, { acc: '1-104', c: minus },
+    { acc: '1-104', d: plus }, { acc, c: plus },
   ]);
 }
 

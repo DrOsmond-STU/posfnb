@@ -116,8 +116,8 @@ ACT['menu-open'] = el => {
   UI.menu.detail = m.id; UI.menu.target = null; render(); window.scrollTo(0, 0);
 };
 ACT['menu-new'] = () => {
-  const n = S.menu.length + 1;
-  MENU_EDIT = { id: nextId(S.menu, 'MN'), name: 'Menu baru', cat: 'Makanan', price: 30000, pop: 3, prep: 8, icon: 'utensils', recipe: [['BB01', 150]], steps: ['Tulis langkah pertama'], serve: '', active: true, isNew: true };
+  if (!S.ingredients.length) { toast('Tambahkan bahan baku dulu di menu Persediaan, baru buat menu dan resepnya.', 'triangle-alert'); return; }
+  MENU_EDIT = { id: nextId(S.menu, 'MN'), name: 'Menu baru', cat: 'Makanan', price: 30000, pop: 3, prep: 8, icon: 'utensils', recipe: [[S.ingredients[0].id, S.ingredients[0].unit === 'pcs' ? 1 : 100]], steps: ['Tulis langkah pertama'], serve: '', active: true, isNew: true };
   UI.menu.detail = MENU_EDIT.id; render(); window.scrollTo(0, 0);
 };
 ACT['menu-back'] = () => { UI.menu.detail = null; MENU_EDIT = null; render(); };
@@ -126,7 +126,7 @@ ACT['me-active'] = el => { MENU_EDIT.active = el.checked; };
 ACT['me-ing'] = el => { MENU_EDIT.recipe[+el.dataset.i][0] = el.value; render(); };
 ACT['me-qty'] = el => { MENU_EDIT.recipe[+el.dataset.i][1] = Math.max(0, parseFloat(el.value.replace(',', '.')) || 0); render(); };
 ACT['me-del'] = el => { MENU_EDIT.recipe.splice(+el.dataset.i, 1); render(); };
-ACT['me-add'] = () => { MENU_EDIT.recipe.push(['BB13', 1]); render(); };
+ACT['me-add'] = () => { if (!S.ingredients.length) { toast('Belum ada bahan baku.', 'triangle-alert'); return; } MENU_EDIT.recipe.push([S.ingredients[0].id, 1]); render(); };
 ACT['me-steps'] = el => { MENU_EDIT.steps = el.value.split('\n').map(s => s.trim()).filter(Boolean); render(); };
 ACT['me-target'] = el => { UI.menu.target = Math.min(90, Math.max(5, +el.value.replace(',', '.') || S.settings.targetFC)); render(); };
 ACT['me-apply'] = el => { MENU_EDIT.price = +el.dataset.v; render(); toast('Harga jual diperbarui. Jangan lupa simpan.'); };
@@ -287,6 +287,7 @@ function sugLines(sup) {
   return (suggestions()[sup] || []).filter(r => r.qty > 0).map(r => ({ ing: r.i.id, qty: r.qty, price: Math.round(r.i.lastPrice) }));
 }
 ACT['po-new'] = () => {
+  if (!S.suppliers.length || !S.ingredients.length) { toast('Tambahkan pemasok dan bahan baku dulu sebelum membuat PO.', 'triangle-alert'); return; }
   const sup = (S.suppliers.find(s => s.active !== false) || S.suppliers[0]).id;
   PO_EDIT = { sup, lines: sugLines(sup), note: '' }; openPOForm();
 };
@@ -432,8 +433,10 @@ VIEWS.persediaan = () => {
     ${list.map(i => `<tr><td class="mono">${i.id}</td><td class="strong">${esc(i.name)}</td><td>${esc(i.cat)}</td><td class="num strong">${fmtQty(i, i.stock)}</td><td class="num muted">${fmtQty(i, i.min)}</td><td>${stockPill(i)}</td><td class="num">${rp(i.avg * i.conv)}<span class="faint">/${i.buy}</span></td><td class="num">${rp(Math.max(0, i.stock) * i.avg)}</td><td class="muted">${esc(supById(i.sup).name)}</td>
       <td class="row" style="flex-wrap:nowrap;gap:4px"><button class="btn btn-sm btn-ghost" data-act="stk-card" data-id="${i.id}" title="Kartu stok">${icon('history', 15)}</button><button class="btn btn-sm btn-ghost" data-act="ing-edit" data-id="${i.id}" title="Ubah">${icon('pencil', 15)}</button></td></tr>`).join('')}
     </tbody><tfoot><tr><td colspan="7">Total ${list.length} bahan</td><td class="num">${rp(sumBy(list, i => Math.max(0, i.stock) * i.avg))}</td><td colspan="2"></td></tr></tfoot></table></div></div>`;
+  } else if (st.tab === 'kartu' && !S.ingredients.length) {
+    body = `<div class="card">${emptyState('history', 'Belum ada bahan. Tambahkan bahan di tab Stok Bahan.')}</div>`;
   } else if (st.tab === 'kartu') {
-    const ing = ingById(st.card);
+    const ing = ingById(st.card) || S.ingredients[0];
     const r = range(st.cardPeriod);
     const after = S.moves.filter(m => m.ing === ing.id && m.t >= r.from);
     let bal = ing.stock - sumBy(after, m => m.qty);
@@ -450,7 +453,7 @@ VIEWS.persediaan = () => {
   } else if (st.tab === 'opname') {
     body = `<div class="row between"><div class="muted">Hitung fisik gudang dan dapur, lalu posting selisihnya sebagai penyesuaian stok.</div><button class="btn btn-primary" data-act="opn-new">${icon('clipboard-check', 16)} Mulai stok opname</button></div>
       <div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>No. opname</th><th>Tanggal</th><th>Petugas</th><th>Catatan</th><th class="num">Item selisih</th><th class="num">Nilai selisih bersih</th><th></th></tr></thead><tbody>
-      ${S.opnames.slice().reverse().map(o => `<tr class="click" data-act="opn-view" data-no="${esc(o.no)}"><td class="mono">${esc(o.no)}</td><td>${fmtDT(o.t)}</td><td>${esc(o.by)}</td><td>${esc(o.note)}</td><td class="num">${o.lines.filter(l => Math.abs(l.diff) > 1e-9).length}</td><td class="num strong ${o.net < 0 ? 'neg' : 'pos'}">${rp(o.net)}</td><td>${icon('chevron-right', 16)}</td></tr>`).join('') || `<tr><td colspan="7">${emptyState('clipboard-check', 'Belum ada stok opname.')}</td></tr>`}
+      ${S.opnames.slice().reverse().map(o => `<tr class="click" data-act="opn-view" data-no="${esc(o.no)}"><td class="mono">${esc(o.no)}</td><td>${fmtDT(o.t)}</td><td>${esc(o.by)}</td><td>${esc(o.note)}${o.opening ? ' <span class="pill info">Saldo awal</span>' : ''}</td><td class="num">${o.lines.filter(l => Math.abs(l.diff) > 1e-9).length}</td><td class="num strong ${o.net < 0 ? 'neg' : 'pos'}">${rp(o.net)}</td><td>${icon('chevron-right', 16)}</td></tr>`).join('') || `<tr><td colspan="7">${emptyState('clipboard-check', 'Belum ada stok opname.')}</td></tr>`}
       </tbody></table></div></div>`;
   } else {
     body = `<div class="row between"><div class="muted">Bahan rusak, kedaluwarsa, atau terbuang dicatat agar food cost aktual tetap akurat.</div><button class="btn btn-primary" data-act="waste-new">${icon('plus', 16)} Catat bahan rusak</button></div>
@@ -469,8 +472,9 @@ ACT['stk-card-sel'] = el => { UI.stock.card = el.value; render(); };
 ACT['stk-card-period'] = el => { UI.stock.cardPeriod = el.dataset.v; render(); };
 
 ACT['ing-edit'] = el => {
+  if (!S.suppliers.length) { toast('Tambahkan pemasok dulu di menu Pemasok; setiap bahan perlu pemasok utama.', 'triangle-alert'); return; }
   const i = el.dataset.id ? ingById(el.dataset.id) : null;
-  const d = i || { id: nextId(S.ingredients, 'BB'), name: '', cat: 'Bahan Pokok', unit: 'gr', buy: 'kg', conv: 1000, lastPrice: 0, min: 1000, sup: 'SP03' };
+  const d = i || { id: nextId(S.ingredients, 'BB'), name: '', cat: 'Bahan Pokok', unit: 'gr', buy: 'kg', conv: 1000, lastPrice: 0, min: 1000, sup: (S.suppliers.find(s => s.active !== false) || S.suppliers[0]).id };
   openModal({
     title: i ? 'Ubah bahan' : 'Tambah bahan baku',
     body: `<div class="form-grid">
@@ -490,6 +494,7 @@ ACT['ing-edit'] = el => {
 ACT['ing-save'] = el => {
   const v = id => document.getElementById(id).value.trim();
   if (!v('ig-name')) { toast('Nama bahan wajib diisi.', 'triangle-alert'); return; }
+  if (!supById(v('ig-sup'))) { toast('Pilih pemasok utama.', 'triangle-alert'); return; }
   let i = ingById(el.dataset.id);
   if (!i) {
     const conv = +v('ig-conv') || 1, price = +v('ig-price') || 0;
@@ -520,6 +525,7 @@ ACT['opn-new'] = () => {
       </tbody></table></div>
       <div class="form-grid"><div class="field"><label for="opn-by">Petugas</label><select class="input" id="opn-by">${opts(activeUsers().map(u => [u.name, u.name]), currentUser().name)}</select></div>
       <div class="field"><label for="opn-note">Catatan</label><input class="input" id="opn-note" placeholder="mis. Opname akhir bulan"></div></div>
+      ${can('data.hapus') ? `<label class="check"><input type="checkbox" id="opn-opening" ${!S.sales.length && !S.opnames.length ? 'checked' : ''}> <span><b>Saldo awal persediaan.</b> Pakai saat pertama kali mengisi stok setelah data dikosongkan: nilai stok dicatat sebagai modal, bukan sebagai selisih atau biaya bahan. Nilai memakai harga rata-rata bahan.</span></label>` : ''}
       <div class="row between"><span class="muted">Total nilai selisih</span><span id="opn-total" style="font-weight:800;font-size:18px">Rp 0</span></div>`,
     foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="opn-post">${icon('check', 16)} Posting penyesuaian</button>`,
   });
@@ -537,8 +543,9 @@ ACT['opn-row'] = el => {
 };
 ACT['opn-post'] = () => {
   const counts = [...modalEl().querySelectorAll('.opn-in')].map(inp => ({ ing: inp.dataset.id, actual: Math.max(0, parseFloat(inp.value.replace(',', '.')) || 0) }));
-  postOpname(Date.now(), counts, document.getElementById('opn-by').value, document.getElementById('opn-note').value.trim() || 'Stok opname');
-  closeModal(true); refresh(); toast('Stok opname diposting dan stok sistem disesuaikan.', 'clipboard-check');
+  const opening = !!(document.getElementById('opn-opening') || {}).checked;
+  postOpname(Date.now(), counts, document.getElementById('opn-by').value, document.getElementById('opn-note').value.trim() || (opening ? 'Saldo awal persediaan' : 'Stok opname'), opening);
+  closeModal(true); refresh(); toast(opening ? 'Saldo awal persediaan dicatat.' : 'Stok opname diposting dan stok sistem disesuaikan.', 'clipboard-check');
 };
 ACT['opn-view'] = el => {
   const o = S.opnames.find(x => x.no === el.dataset.no);
@@ -553,9 +560,10 @@ ACT['opn-view'] = el => {
 
 /* ---------- Waste ---------- */
 ACT['waste-new'] = () => {
+  if (!S.ingredients.length) { toast('Belum ada bahan baku.', 'triangle-alert'); return; }
   openModal({ title: 'Catat bahan rusak', size: 'sm',
-    body: `<div class="field"><label for="ws-ing">Bahan</label><select class="input" id="ws-ing" data-ch="ws-ing">${opts(S.ingredients.map(i => [i.id, i.name + ' (' + i.unit + ')']), 'BB17')}</select></div>
-      <div class="field"><label for="ws-qty">Jumlah (<span id="ws-unit">gr</span>)</label><input class="input num" id="ws-qty" inputmode="decimal" value="" autofocus></div>
+    body: `<div class="field"><label for="ws-ing">Bahan</label><select class="input" id="ws-ing" data-ch="ws-ing">${opts(S.ingredients.map(i => [i.id, i.name + ' (' + i.unit + ')']), S.ingredients[0].id)}</select></div>
+      <div class="field"><label for="ws-qty">Jumlah (<span id="ws-unit">${S.ingredients[0].unit}</span>)</label><input class="input num" id="ws-qty" inputmode="decimal" value="" autofocus></div>
       <div class="field"><label for="ws-reason">Alasan</label><select class="input" id="ws-reason">${opts(['Layu / busuk', 'Kedaluwarsa', 'Rusak saat penyimpanan', 'Tumpah / jatuh', 'Salah masak / komplain tamu'].map(x => [x, x]), 'Layu / busuk')}</select></div>`,
     foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="ws-save">${icon('save', 16)} Simpan</button>` });
 };

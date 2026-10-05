@@ -307,7 +307,8 @@ VIEWS['lap-persediaan'] = () => {
   const r = range(UI.rinv.period);
   const rows = S.ingredients.map(i => {
     const mv = S.moves.filter(m => m.ing === i.id);
-    const after = mv.filter(m => m.t >= r.from);
+    // saldo awal (tipe 'awal') selalu dihitung sebagai saldo awal walau dicatat di dalam periode
+    const after = mv.filter(m => m.t >= r.from && m.type !== 'awal');
     const closeQ = i.stock, closeV = Math.max(0, i.stock) * i.avg;
     const openQ = closeQ - sumBy(after, m => m.qty), openV = closeV - sumBy(after, m => m.value);
     const inP = after.filter(m => m.t <= r.to);
@@ -391,9 +392,9 @@ VIEWS.pengaturan = () => {
         <div class="li">${icon('printer', 18)}<div class="grow"><div class="t">Printer struk kasir</div><div class="s">Epson TM-T82X · USB · kertas 80 mm</div></div><span class="pill ok">Terhubung</span></div>
         <div class="li">${icon('chef-hat', 18)}<div class="grow"><div class="t">Printer dapur</div><div class="s">Xprinter XP-Q200 · LAN 192.168.1.40</div></div><span class="pill ok">Terhubung</span></div>
         <div class="li">${icon('credit-card', 18)}<div class="grow"><div class="t">Mesin EDC</div><div class="s">BCA · terminal 88120931</div></div><span class="pill warn">Belum dites hari ini</span></div></div></div>
-      <div class="card"><div class="card-h"><h3>Data demo</h3></div><div class="card-b stack">
-        <div class="muted">Data transaksi 30 hari dibuat otomatis dan disimpan di browser ini. Atur ulang untuk kembali ke kondisi awal.</div>
-        <button class="btn btn-danger" data-act="reset-ask">${icon('refresh-cw', 16)} Atur ulang data demo</button></div></div>
+      <div class="card"><div class="card-h"><h3>Data</h3>${S.clearedAt ? `<span class="sub">dikosongkan ${fmtDT(S.clearedAt)}</span>` : '<span class="sub">berisi data contoh</span>'}</div><div class="card-b stack">
+        <div class="muted">Data transaksi tersimpan di browser ini. ${S.clearedAt ? 'Data sudah dikosongkan dan siap dipakai.' : 'Saat ini berisi data contoh 30 hari. Kosongkan sebelum mulai memakai aplikasi dengan data sendiri.'}</div>
+        <div class="row">${can('data.hapus') ? `<button class="btn btn-danger" data-act="clear-ask">${icon('trash-2', 16)} Kosongkan data</button>` : ''}<button class="btn" data-act="reset-ask">${icon('refresh-cw', 16)} Isi ulang data contoh</button></div></div></div>
     </div>
   </div>`;
 };
@@ -407,10 +408,50 @@ ACT['st-save'] = () => {
   });
   refresh(); paintChrome(); toast('Pengaturan disimpan.');
 };
-ACT['reset-ask'] = () => openModal({ title: 'Atur ulang data demo?', size: 'sm',
-  body: '<div>Semua transaksi, PO, dan perubahan resep yang Anda buat di purwarupa ini akan dihapus dan diganti data demo baru.</div>',
+ACT['reset-ask'] = () => openModal({ title: 'Isi ulang data contoh?', size: 'sm',
+  body: '<div>Semua data di browser ini (transaksi, PO, menu, bahan, pemasok) dihapus dan diganti data contoh 30 hari. Pakai hanya untuk latihan atau demo.</div>',
   foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="reset-do">${icon('refresh-cw', 16)} Atur ulang</button>` });
-ACT['reset-do'] = () => { resetState(); UI.cart = newCart(); closeModal(true); render(); paintChrome(); toast('Data demo dibuat ulang.'); };
+ACT['reset-do'] = () => { resetState(); afterDataSwap(); closeModal(true); render(); paintChrome(); audit('Data dihapus', 'Isi ulang data contoh'); toast('Data contoh dibuat ulang.'); };
+
+/* ---------- Kosongkan data (izin data.hapus) ---------- */
+function afterDataSwap() {
+  UI.cart = newCart();
+  UI.menu.detail = null; MENU_EDIT = null; PO_EDIT = null;
+  UI.stock.card = S.ingredients.length ? S.ingredients[0].id : null;
+}
+function dataCounts() {
+  return [['penjualan', S.sales.length], ['PO', S.pos.length], ['penerimaan barang', S.grns.length], ['biaya', S.expenses.length],
+    ['bahan rusak', S.wastes.length], ['stok opname', S.opnames.length], ['jurnal', S.journals.length], ['bill terbuka', S.bills.length]];
+}
+ACT['clear-ask'] = () => {
+  const c = dataCounts().filter(x => x[1]);
+  openModal({ title: 'Kosongkan data',
+    body: `<div class="alert bad">${icon('triangle-alert', 16)}<div>Seluruh transaksi di browser ini dihapus <b>permanen</b> dan tidak bisa dikembalikan. Akun pengguna, pengaturan outlet, dan denah meja tidak ikut terhapus.</div></div>
+      ${c.length ? `<div class="muted" style="font-size:13px">Akan dihapus: ${c.map(([l, n]) => `${nf.format(n)} ${l}`).join(', ')}.</div>` : ''}
+      <div class="stack" style="gap:8px">
+        <label class="check"><input type="radio" name="cl-scope" value="trx" checked> <span><b>Hapus transaksi saja.</b> Menu, resep, bahan, pemasok, dan meja tetap ada; stok semua bahan menjadi 0.</span></label>
+        <label class="check"><input type="radio" name="cl-scope" value="all"> <span><b>Hapus semua data.</b> Termasuk ${nf.format(S.menu.length)} menu, ${nf.format(S.ingredients.length)} bahan, dan ${nf.format(S.suppliers.length)} pemasok; mulai dari nol.</span></label></div>
+      <div class="form-grid">
+        <div class="field"><label for="cl-kas">Saldo awal kas outlet (opsional)</label><input class="input num" id="cl-kas" inputmode="numeric" placeholder="0"></div>
+        <div class="field"><label for="cl-bank">Saldo awal bank (opsional)</label><input class="input num" id="cl-bank" inputmode="numeric" placeholder="0"></div></div>
+      <div class="faint" style="font-size:12px">Saldo awal dicatat sebagai modal pemilik. Stok awal diisi sesudahnya lewat Persediaan → Stok Opname dengan pilihan "Saldo awal persediaan".</div>
+      <div class="field"><label for="cl-confirm">Ketik <b>KOSONGKAN</b> untuk melanjutkan</label><input class="input" id="cl-confirm" autocomplete="off" autofocus></div>`,
+    foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-danger" data-act="clear-do">${icon('trash-2', 16)} Kosongkan data</button>` });
+};
+ACT['clear-do'] = () => {
+  if (document.getElementById('cl-confirm').value.trim().toUpperCase() !== 'KOSONGKAN') { toast('Ketik KOSONGKAN untuk mengonfirmasi.', 'triangle-alert'); return; }
+  const keep = document.querySelector('input[name="cl-scope"]:checked').value === 'trx';
+  const num = id => +document.getElementById(id).value.replace(/\D/g, '') || 0;
+  const kas = num('cl-kas'), bank = num('cl-bank');
+  const what = dataCounts().filter(x => x[1]).map(([l, n]) => `${n} ${l}`).join(', ') || 'tidak ada transaksi';
+  clearData(keep);
+  postOpeningCash(Date.now(), kas, bank);
+  saveState();
+  afterDataSwap();
+  audit('Data dihapus', `Kosongkan data (${keep ? 'transaksi saja' : 'semua termasuk data master'}): ${what}${kas || bank ? ` · saldo awal kas ${rp(kas)}, bank ${rp(bank)}` : ''}`);
+  closeModal(true); render(); paintChrome();
+  toast(keep ? 'Data transaksi dikosongkan. Isi stok awal lewat Stok Opname.' : 'Semua data dikosongkan. Mulai dengan menambah pemasok, bahan, lalu menu.', 'trash-2');
+};
 
 /* =========================== HERO PER HALAMAN ===========================
    Judul besar bergradasi di atas setiap halaman, mengikuti pola KG SafeGuard:

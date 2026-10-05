@@ -86,6 +86,22 @@ Ada dua cara masuk: **email + kata sandi**, atau **PIN kasir 6 digit** untuk ber
 - Setiap aksi penting tercatat di `audit_logs` beserta alamat IP. Catatan yang dilaporkan aplikasi di browser (void, batal bill) dibatasi jenis tertentu dan ditandai sumber **Aplikasi**, sehingga tidak bisa dipakai memalsukan catatan **Server** (masuk, gagal masuk, perubahan akun).
 - Galat PHP tidak pernah ditampilkan di respons (hanya dicatat ke error log); nama pengguna ditolak bila memuat tag HTML; pesan notifikasi di UI dirender sebagai teks, bukan HTML.
 
+## Kosongkan data (mulai memakai aplikasi)
+
+Data contoh 30 hari dikosongkan lewat **Pengaturan → Data → Kosongkan data** (izin `data.hapus`, bawaan hanya Pemilik). Ada dua pilihan:
+
+- **Hapus transaksi saja**: penjualan, PO, penerimaan, biaya, bahan rusak, opname, jurnal, mutasi stok, bill terbuka, tiket dapur, dan reservasi dihapus. Menu, resep, bahan (stok menjadi 0), pemasok, meja, dan pengaturan tetap ada.
+- **Hapus semua data**: ikut menghapus menu, resep, bahan, dan pemasok. Mulai dari menambah pemasok, lalu bahan, lalu menu.
+
+Akun pengguna dan log aktivitas di server tidak ikut terhapus. Konfirmasinya dengan mengetik `KOSONGKAN`.
+
+Langkah sesudahnya:
+1. **Saldo awal kas & bank**: diisi langsung di dialog Kosongkan data dan dicatat sebagai modal pemilik.
+2. **Stok awal**: Persediaan → Stok Opname → isi jumlah fisik, lalu centang **Saldo awal persediaan**. Nilainya dicatat sebagai persediaan dan modal, bukan selisih atau biaya bahan, sehingga laba rugi tidak terganggu.
+3. Mulai bertransaksi. Nomor dokumen mulai lagi dari 0001.
+
+**Isi ulang data contoh** mengembalikan data latihan 30 hari.
+
 ## Hapus data permanen
 
 Pengguna dengan izin **Hapus data permanen** (`data.hapus`, bawaan hanya Pemilik) melihat tombol **Hapus permanen** pada:
