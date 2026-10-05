@@ -25,6 +25,7 @@ const ACTION_PERMS = [
   ['pengaturan.ubah', 'Ubah pengaturan outlet', 'Sistem'],
   ['pengguna.kelola', 'Kelola pengguna & hak akses', 'Sistem'],
   ['data.reset', 'Atur ulang data demo', 'Sistem'],
+  ['data.hapus', 'Hapus data permanen', 'Sistem'],
 ];
 const permLabel = p => {
   if (p.startsWith('m:')) return 'Buka modul ' + navInfo(p.slice(2)).title;
@@ -107,6 +108,7 @@ const ACT_PERM = {
   'sup-del': 'po.buat', 'po-edit': 'po.buat', 'ing-del': 'stok.bahan', 'menu-del': 'menu.edit',
   'waste-void': 'stok.waste', 'exp-void': 'kas.catat', 'resv-new': 'm:meja', 'resv-save': 'm:meja',
   'user-edit': 'pengguna.kelola', 'user-save': 'pengguna.kelola', 'role-toggle': 'pengguna.kelola',
+  'purge-ask': 'data.hapus', 'purge-do': 'data.hapus', 'user-del': 'data.hapus', 'user-del-ok': 'data.hapus',
 };
 function permOk(actName) {
   const p = ACT_PERM[actName];
@@ -469,8 +471,27 @@ ACT['user-edit'] = el => {
       <label class="switch full"><input type="checkbox" id="us-active" ${d.active ? 'checked' : ''}> Akun aktif dan boleh masuk</label></div>
       <div class="faint" style="font-size:12px">Kata sandi awal atau yang diatur ulang wajib diganti pengguna saat pertama masuk. Menonaktifkan akun langsung mengakhiri semua sesinya.</div>
       <div id="us-err"></div>`,
-    foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="user-save" data-id="${u ? u.id : ''}">${icon('save', 16)} Simpan</button>`,
+    foot: `${u && u.id !== currentUser().id && can('data.hapus') ? `<button class="btn btn-danger" data-act="user-del" data-id="${u.id}">${icon('trash-2', 16)} Hapus permanen</button><span class="spacer"></span>` : ''}<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="user-save" data-id="${u ? u.id : ''}">${icon('save', 16)} Simpan</button>`,
   });
+};
+ACT['user-del'] = el => {
+  const u = ADMIN.users.find(x => x.id === +el.dataset.id);
+  openModal({
+    title: 'Hapus pengguna permanen', size: 'sm',
+    body: `<div class="strong">${esc(u.name)} · ${esc(u.email)}</div>
+      <div class="alert bad">${icon('triangle-alert', 16)}<div>Akun ini dihapus dari server dan semua sesinya langsung berakhir. Riwayat transaksi dan log aktivitasnya tetap tersimpan dengan namanya. Bila hanya ingin mencegahnya masuk, cukup nonaktifkan akun.</div></div>
+      <label class="check"><input type="checkbox" id="ud-ok"> Saya mengerti akun ini tidak bisa dikembalikan</label>
+      <div id="ud-err"></div>`,
+    foot: `<button class="btn" data-act="user-edit" data-id="${u.id}">Kembali</button><button class="btn btn-danger" data-act="user-del-ok" data-id="${u.id}">${icon('trash-2', 16)} Hapus permanen</button>`,
+  });
+};
+ACT['user-del-ok'] = async el => {
+  if (!document.getElementById('ud-ok').checked) { toast('Centang konfirmasi terlebih dahulu.', 'triangle-alert'); return; }
+  el.disabled = true;
+  const r = await api('DELETE', 'users/' + el.dataset.id);
+  el.disabled = false;
+  if (!r.ok) { document.getElementById('ud-err').innerHTML = `<div class="alert bad">${icon('triangle-alert', 16)}<div>${esc(apiErr(r))}</div></div>`; return; }
+  closeModal(true); ADMIN.users = null; await loadStaff(); render(); toast('Pengguna dihapus permanen.', 'trash-2');
 };
 ACT['user-save'] = async el => {
   const v = id => document.getElementById(id).value.trim();

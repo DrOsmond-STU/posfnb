@@ -338,7 +338,7 @@ function poDetail(no) {
       </div>
       ${p.note ? `<div class="alert">${icon('notebook-pen', 16)}<div>${esc(p.note)}</div></div>` : ''}
       ${p.grns.length ? `<div class="muted" style="font-size:12.5px">Dokumen penerimaan: ${p.grns.map(g => `<span class="mono">${esc(g)}</span>`).join(', ')}</div>` : ''}`,
-    foot: `${['draft', 'dikirim'].includes(p.status) ? `<button class="btn btn-danger" data-act="po-cancel" data-no="${esc(p.no)}">Batalkan PO</button>` : ''}<span class="spacer"></span>
+    foot: `${purgeBtn('po', p.no)}${['draft', 'dikirim'].includes(p.status) ? `<button class="btn btn-danger" data-act="po-cancel" data-no="${esc(p.no)}">Batalkan PO</button>` : ''}<span class="spacer"></span>
       ${p.status === 'draft' ? `<button class="btn" data-act="po-edit" data-no="${esc(p.no)}">${icon('pencil', 16)} Ubah draft</button>` : ''}
       ${p.status === 'draft' ? `<button class="btn btn-primary" data-act="po-send" data-no="${esc(p.no)}">${icon('send', 16)} Kirim ke pemasok</button>` : ''}
       ${canRecv ? `<button class="btn btn-primary" data-act="po-recv" data-no="${esc(p.no)}">${icon('package-check', 16)} Terima barang</button>` : ''}
@@ -403,7 +403,8 @@ ACT['grn-view'] = el => {
       <div class="table-wrap"><table class="tbl"><thead><tr><th>Bahan</th><th class="num">Jumlah</th><th class="num">Setara</th><th class="num">Harga</th><th class="num">Nilai</th></tr></thead><tbody>
       ${g.lines.map(l => { const i = ingById(l.ing); return `<tr><td class="strong">${esc(i.name)}</td><td class="num">${fmtBuy(i, l.qty)}</td><td class="num muted">${fmtQty(i, l.qty * i.conv)}</td><td class="num">${rp(l.price)}</td><td class="num">${rp(l.qty * l.price)}</td></tr>`; }).join('')}
       </tbody><tfoot><tr><td colspan="4">Total</td><td class="num">${rp(g.value)}</td></tr></tfoot></table></div>
-      <div class="muted" style="font-size:12.5px">Jurnal: Persediaan Bahan Baku (D) ${rp(g.value)} · Hutang Usaha (K) ${rp(g.value)}</div>` });
+      <div class="muted" style="font-size:12.5px">Jurnal: Persediaan Bahan Baku (D) ${rp(g.value)} · Hutang Usaha (K) ${rp(g.value)}</div>`,
+    foot: `${purgeBtn('grn', g.no)}<span class="spacer"></span><button class="btn btn-primary" data-act="modal-close">Tutup</button>` });
 };
 
 /* =========================== PERSEDIAAN =========================== */
@@ -454,7 +455,7 @@ VIEWS.persediaan = () => {
   } else {
     body = `<div class="row between"><div class="muted">Bahan rusak, kedaluwarsa, atau terbuang dicatat agar food cost aktual tetap akurat.</div><button class="btn btn-primary" data-act="waste-new">${icon('plus', 16)} Catat bahan rusak</button></div>
       <div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>No.</th><th>Tanggal</th><th>Bahan</th><th class="num">Jumlah</th><th>Alasan</th><th>Dicatat oleh</th><th class="num">Nilai</th><th></th></tr></thead><tbody>
-      ${S.wastes.slice().reverse().map(w => { const i = ingById(w.ing); const off = w.status === 'batal'; return `<tr><td class="mono">${esc(w.no)}</td><td>${fmtDT(w.t)}</td><td class="strong">${esc(i.name)}</td><td class="num">${fmtQty(i, w.qty)}</td><td>${esc(w.reason)}${off ? ` <span class="pill">Dibatalkan</span>` : ''}</td><td>${esc(w.by)}</td><td class="num ${off ? 'faint' : 'neg'}" ${off ? 'style="text-decoration:line-through"' : ''}>${rp(w.value)}</td><td>${off ? '' : `<button class="btn btn-sm btn-ghost" data-act="waste-void" data-no="${esc(w.no)}">Batalkan</button>`}</td></tr>`; }).join('') || `<tr><td colspan="8">${emptyState('trash-2', 'Belum ada catatan bahan rusak.')}</td></tr>`}
+      ${S.wastes.slice().reverse().map(w => { const i = ingById(w.ing); const off = w.status === 'batal'; return `<tr><td class="mono">${esc(w.no)}</td><td>${fmtDT(w.t)}</td><td class="strong">${esc(i.name)}</td><td class="num">${fmtQty(i, w.qty)}</td><td>${esc(w.reason)}${off ? ` <span class="pill">Dibatalkan</span>` : ''}</td><td>${esc(w.by)}</td><td class="num ${off ? 'faint' : 'neg'}" ${off ? 'style="text-decoration:line-through"' : ''}>${rp(w.value)}</td><td class="row" style="flex-wrap:nowrap;gap:4px">${off ? '' : `<button class="btn btn-sm btn-ghost" data-act="waste-void" data-no="${esc(w.no)}">Batalkan</button>`}${purgeBtn('waste', w.no, true)}</td></tr>`; }).join('') || `<tr><td colspan="8">${emptyState('trash-2', 'Belum ada catatan bahan rusak.')}</td></tr>`}
       </tbody><tfoot><tr><td colspan="6">Total (tanpa yang dibatalkan)</td><td class="num">${rp(sumBy(S.wastes.filter(w => w.status !== 'batal'), w => w.value))}</td><td></td></tr></tfoot></table></div></div>`;
   }
   return `<div class="tabs">${tabs.map(([k, l]) => `<button type="button" class="${st.tab === k ? 'on' : ''}" data-act="stk-tab" data-v="${k}">${l}</button>`).join('')}</div>${body}`;
@@ -546,7 +547,8 @@ ACT['opn-view'] = el => {
     body: `<div class="muted">${fmtDT(o.t)} · ${esc(o.by)} · ${esc(o.note)}</div>
       <div class="table-wrap"><table class="tbl"><thead><tr><th>Bahan</th><th class="num">Sistem</th><th class="num">Fisik</th><th class="num">Selisih</th><th class="num">Nilai</th></tr></thead><tbody>
       ${diffs.map(l => { const i = ingById(l.ing); return `<tr><td class="strong">${esc(i.name)}</td><td class="num">${fmtQty(i, l.system)}</td><td class="num">${fmtQty(i, l.actual)}</td><td class="num ${l.diff < 0 ? 'neg' : 'pos'}">${fmtQty(i, l.diff)}</td><td class="num ${l.value < 0 ? 'neg' : 'pos'}">${rp(l.value)}</td></tr>`; }).join('') || `<tr><td colspan="5">${emptyState('check', 'Tidak ada selisih.')}</td></tr>`}
-      </tbody><tfoot><tr><td colspan="4">Selisih bersih (${o.lines.length} bahan dihitung)</td><td class="num">${rp(o.net)}</td></tr></tfoot></table></div>` });
+      </tbody><tfoot><tr><td colspan="4">Selisih bersih (${o.lines.length} bahan dihitung)</td><td class="num">${rp(o.net)}</td></tr></tfoot></table></div>`,
+    foot: `${purgeBtn('opname', o.no)}<span class="spacer"></span><button class="btn btn-primary" data-act="modal-close">Tutup</button>` });
 };
 
 /* ---------- Waste ---------- */

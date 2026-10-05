@@ -86,6 +86,27 @@ Ada dua cara masuk: **email + kata sandi**, atau **PIN kasir 6 digit** untuk ber
 - Setiap aksi penting tercatat di `audit_logs` beserta alamat IP. Catatan yang dilaporkan aplikasi di browser (void, batal bill) dibatasi jenis tertentu dan ditandai sumber **Aplikasi**, sehingga tidak bisa dipakai memalsukan catatan **Server** (masuk, gagal masuk, perubahan akun).
 - Galat PHP tidak pernah ditampilkan di respons (hanya dicatat ke error log); nama pengguna ditolak bila memuat tag HTML; pesan notifikasi di UI dirender sebagai teks, bukan HTML.
 
+## Hapus data permanen
+
+Pengguna dengan izin **Hapus data permanen** (`data.hapus`, bawaan hanya Pemilik) melihat tombol **Hapus permanen** pada:
+
+| Data | Tempat | Yang ikut dihapus / dikoreksi |
+|---|---|---|
+| Penjualan (aktif atau void) | Riwayat Penjualan → detail transaksi | Jurnal penjualan & void, mutasi stok; transaksi lama yang direkap harian dikurangi dari jurnal & mutasi rekapnya |
+| Purchase order | Pembelian → detail PO | Semua penerimaan barang, pembayaran, jurnal, dan mutasi stoknya |
+| Penerimaan barang | Pembelian → Penerimaan Barang → detail | Jurnal & mutasi stoknya; jumlah diterima, hutang, dan status PO disesuaikan |
+| Biaya | Kas & Biaya → baris biaya | Jurnal biaya & pembatalannya; dana kembali ke kas/bank |
+| Bahan rusak | Persediaan → Bahan Rusak → baris | Jurnal & mutasi stok, termasuk pembatalannya |
+| Stok opname | Persediaan → Stok Opname → detail | Jurnal & mutasi penyesuaian; stok kembali ke angka sebelum opname |
+| Setor kas ke bank, setor PB1 | Laporan Keuangan → Jurnal Umum | Jurnalnya |
+| Pengguna | Pengguna & Akses → Ubah | Akun, sesi, dan kunci percobaannya (di server); log aktivitas tetap disimpan |
+
+Aturan pengaman:
+- Data dihapus seolah tidak pernah terjadi; stok dan nilai persediaan dikoreksi dengan nilai yang sama persis, sehingga neraca tetap seimbang dan akun persediaan tetap sama dengan nilai stok fisik.
+- Penghapusan **ditolak** bila stok akan menjadi minus (barang dari penerimaan atau opname itu sudah terpakai), atau bila penerimaan barang sudah dibayar melebihi sisa nilainya (hapus PO-nya sekaligus).
+- Dialog konfirmasi menampilkan dampaknya (jurnal, stok, saldo kas/bank) dan meminta alasan serta centang konfirmasi. Setiap penghapusan tercatat di log aktivitas sebagai "Data dihapus".
+- Data master (menu, bahan, pemasok) tetap hanya bisa dihapus bila belum dipakai transaksi; yang sudah dipakai cukup dinonaktifkan agar riwayat dan laporan tetap utuh. Jurnal saldo awal dan log aktivitas tidak bisa dihapus.
+
 ## API autentikasi
 
 | Metode | Path | Keterangan |
@@ -99,6 +120,7 @@ Ada dua cara masuk: **email + kata sandi**, atau **PIN kasir 6 digit** untuk ber
 | PUT | `/api/auth/me/credentials` | Ganti kata sandi/PIN sendiri |
 | GET/POST | `/api/auth/approvers?perm=` · `/api/auth/approve` | Persetujuan dengan PIN |
 | GET/POST/PUT | `/api/users`, `/api/users/{id}` | Kelola pengguna (izin `pengguna.kelola`) |
+| DELETE | `/api/users/{id}` | Hapus pengguna permanen (izin `pengguna.kelola` + `data.hapus`) |
 | GET/PUT | `/api/roles`, `/api/roles/{id}/permissions` | Matriks izin per peran |
 | GET | `/api/audit-logs?limit=` | Log aktivitas |
 
@@ -129,6 +151,7 @@ tools/dev-router.php     router untuk server PHP bawaan (lokal)
 assets/views-ops.js      Dasbor, Kasir, Meja, Layar Dapur, Riwayat Penjualan
 assets/views-stock.js    Resep, Pemasok, Pembelian, Persediaan
 assets/views-finance.js  Kas & Biaya, Laporan, Pengaturan
+assets/hapus.js          hapus data permanen (rencana dampak, validasi, koreksi stok & jurnal)
 ```
 
 ## Tema

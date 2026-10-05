@@ -60,6 +60,7 @@ Server adalah satu-satunya penentu izin. Antarmuka hanya menyembunyikan atau men
 | `pengaturan.ubah` | Ubah pengaturan outlet | `PUT /settings` |
 | `pengguna.kelola` | Kelola pengguna & hak akses | `/users…`, `/roles…` |
 | `data.reset` | Atur ulang data demo | Hanya lingkungan demo; **tidak ada di produksi** |
+| `data.hapus` | Hapus data permanen (transaksi, jurnal kas/PB1, pengguna) | `DELETE /users/{id}` (+ `pengguna.kelola`); hapus dokumen transaksi. Bawaan hanya Pemilik |
 
 ## 3.3 Matriks izin bawaan
 

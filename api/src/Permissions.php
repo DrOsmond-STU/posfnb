@@ -12,6 +12,7 @@ final class Permissions
     public const ACTIONS = [
         'kasir.bayar', 'kasir.diskon', 'penjualan.semua', 'penjualan.void', 'menu.edit', 'po.buat', 'po.terima',
         'po.bayar', 'stok.bahan', 'stok.opname', 'stok.waste', 'kas.catat', 'pengaturan.ubah', 'pengguna.kelola', 'data.reset',
+        'data.hapus',
     ];
 
     /** Semua izin yang sah (akses modul berawalan "m:"). */

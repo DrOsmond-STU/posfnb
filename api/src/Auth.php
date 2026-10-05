@@ -422,7 +422,7 @@ final class Auth
     }
 
     /** Jenis aktivitas yang boleh dilaporkan klien; selain ini ditolak agar log tidak bisa dipalsukan. */
-    private const CLIENT_EVENTS = ['Akses ditolak', 'Bill dibatalkan', 'Void transaksi', 'Biaya dibatalkan', 'Bahan rusak dibatalkan'];
+    private const CLIENT_EVENTS = ['Akses ditolak', 'Bill dibatalkan', 'Void transaksi', 'Biaya dibatalkan', 'Bahan rusak dibatalkan', 'Data dihapus'];
 
     /** Aktivitas dari modul lain di peramban (void, batal bill, akses ditolak). Selalu ditandai source=client. */
     public static function clientAudit(): void

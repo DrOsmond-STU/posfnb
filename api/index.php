@@ -32,6 +32,7 @@ $routes = [
     ['GET',  '#^/users$#',                   [Users::class, 'list']],
     ['POST', '#^/users$#',                   function () { Users::save(null); }],
     ['PUT',  '#^/users/(\d+)$#',             function ($id) { Users::save((int) $id); }],
+    ['DELETE', '#^/users/(\d+)$#',           function ($id) { Users::delete((int) $id); }],
     ['GET',  '#^/roles$#',                   [Users::class, 'roles']],
     ['PUT',  '#^/roles/([a-z]+)/permissions$#', function ($id) { Users::setPermission($id); }],
     ['GET',  '#^/audit-logs$#',              [Users::class, 'auditLogs']],

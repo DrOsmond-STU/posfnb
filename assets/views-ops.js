@@ -412,7 +412,7 @@ function showReceipt(s, fresh) {
       ${s.discBy ? `<div class="muted" style="font-size:12px">Diskon ${s.discPct}% disetujui ${esc(s.discBy)}</div>` : ''}
       <div style="background:var(--surface-3);padding:16px;border-radius:10px">${receiptHTML(s)}</div>
       <div class="muted" style="font-size:12px">HPP transaksi ini ${rp(s.cogs)} · food cost ${pct(s.net ? s.cogs / s.net * 100 : 0)}</div>`,
-    foot: `${!fresh && !isVoid && canView('penjualan') ? `<button class="btn btn-danger" data-act="sale-void" data-no="${esc(s.no)}">${icon('ban', 16)} Void</button><span class="spacer"></span>` : ''}<button class="btn" data-act="receipt-print">${icon('printer', 16)} Cetak struk</button>${fresh ? `<button class="btn btn-primary" data-act="modal-close">${icon('plus', 16)} Transaksi baru</button>` : `<button class="btn btn-primary" data-act="modal-close">Tutup</button>`}`,
+    foot: `${!fresh ? purgeBtn('sale', s.no) : ''}${!fresh && !isVoid && canView('penjualan') ? `<button class="btn btn-danger" data-act="sale-void" data-no="${esc(s.no)}">${icon('ban', 16)} Void</button>` : ''}${!fresh ? '<span class="spacer"></span>' : ''}<button class="btn" data-act="receipt-print">${icon('printer', 16)} Cetak struk</button>${fresh ? `<button class="btn btn-primary" data-act="modal-close">${icon('plus', 16)} Transaksi baru</button>` : `<button class="btn btn-primary" data-act="modal-close">Tutup</button>`}`,
   });
 }
 ACT['receipt-print'] = () => toast('Struk dikirim ke printer kasir (simulasi).', 'printer');

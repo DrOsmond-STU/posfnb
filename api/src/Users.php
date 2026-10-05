@@ -89,6 +89,37 @@ final class Users
         Http::json($target ? 200 : 201, ['user' => self::row(Db::one('SELECT * FROM users WHERE id = ?', [$id]))]);
     }
 
+    /**
+     * Menghapus pengguna permanen (izin pengguna.kelola + data.hapus).
+     * Sesi dan kunci percobaannya ikut dihapus; log aktivitasnya tetap disimpan dengan namanya.
+     */
+    public static function delete(int $id): void
+    {
+        $me = Auth::requirePerm('pengguna.kelola');
+        if (!Permissions::userHas($me, 'data.hapus')) {
+            Audit::log($me, 'Akses ditolak', 'API: data.hapus');
+            throw new ApiError(403, 'FORBIDDEN', 'Anda tidak punya izin untuk menghapus data permanen.', ['permission' => 'data.hapus']);
+        }
+        $u = Db::one('SELECT * FROM users WHERE id = ?', [$id]);
+        if (!$u) {
+            throw new ApiError(404, 'NOT_FOUND', 'Pengguna tidak ditemukan.');
+        }
+        $fail = function (string $m) { throw new ApiError(422, 'VALIDATION_FAILED', $m); };
+        if ((int) $me['id'] === $id) $fail('Anda tidak bisa menghapus akun sendiri.');
+        if ($u['role_id'] === 'owner' && $me['role_id'] !== 'owner') $fail('Hanya Pemilik yang bisa menghapus akun Pemilik.');
+        if ($u['role_id'] === 'owner' && (int) $u['is_active']) {
+            $others = (int) Db::one('SELECT COUNT(*) AS n FROM users WHERE role_id = ? AND is_active = 1 AND id <> ?', ['owner', $id])['n'];
+            if ($others === 0) $fail('Harus ada minimal satu Pemilik yang aktif.');
+        }
+        Db::tx(function () use ($u) {
+            Db::run('DELETE FROM sessions WHERE user_id = ?', [$u['id']]);
+            Db::run('DELETE FROM login_attempts WHERE k IN (?, ?)', ['pw:' . $u['email'], 'pin:' . $u['id']]);
+            Db::run('DELETE FROM users WHERE id = ?', [$u['id']]);
+        });
+        Audit::log($me, 'Pengguna dihapus', $u['name'] . ' (' . $u['email'] . ', ' . $u['role_id'] . ')');
+        Http::json(200, ['ok' => true]);
+    }
+
     public static function roles(): void
     {
         Auth::requirePerm('pengguna.kelola');
