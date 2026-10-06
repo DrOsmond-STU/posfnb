@@ -197,8 +197,11 @@ const ym = t => { const d = new Date(t); return String(d.getFullYear()).slice(2)
    STATE
    ========================================================================= */
 let S = null;
+/* true: browser tanpa data diisi data contoh; false (instalasi produksi): mulai kosong. Diatur server lewat /api/app. */
+let DEMO = true;
 
 function saveState() {
+  if (S && S.volatile) return;   // pengaturan instalasi belum terbaca; jangan simpan apa pun
   try { localStorage.setItem(DB_KEY, JSON.stringify(S)); } catch (e) { /* penyimpanan tidak tersedia */ }
 }
 function loadState() {
@@ -210,7 +213,7 @@ function loadState() {
       if (s && s.ver === 1) { S = s; migrateState(); return; }
     }
   } catch (e) { /* abaikan */ }
-  S = buildDemo(Date.now());
+  S = DEMO ? buildDemo(Date.now()) : buildEmpty(Date.now());
   saveState();
 }
 /* lengkapi field yang ditambahkan setelah data lama tersimpan */
@@ -244,7 +247,7 @@ function postOpeningCash(t, kas, bank) {
 }
 function resetState() {
   try { localStorage.removeItem(DB_KEY); } catch (e) { /* abaikan */ }
-  S = buildDemo(Date.now());
+  S = DEMO ? buildDemo(Date.now()) : buildEmpty(Date.now());
   saveState();
 }
 
@@ -570,6 +573,28 @@ function accBalance(code, from, to) {
   return bal;
 }
 
+/* ---------- Parameter bawaan instalasi baru ---------- */
+const DEFAULT_SETTINGS = () => ({
+  outlet: 'Outlet Baru', branch: 'Cabang Utama', address: '', phone: '', npwp: '',
+  taxOn: true, taxRate: 10, serviceRate: 5, serviceTakeaway: false, targetFC: 35, rounding: false,
+  footer: 'Terima kasih atas kunjungan Anda',
+});
+const TABLE_LAYOUT = () => {
+  const areas = ['Indoor', 'Indoor', 'Indoor', 'Indoor', 'Indoor', 'Indoor', 'Indoor', 'Indoor', 'Teras', 'Teras', 'Teras', 'Teras', 'Teras', 'VIP', 'VIP', 'Bar'];
+  const seats = [2, 2, 4, 4, 4, 4, 6, 6, 2, 2, 4, 4, 4, 8, 10, 4];
+  return areas.map((a, i) => ({ no: i + 1, area: a, seats: seats[i], status: 'kosong', bill: null, resv: null }));
+};
+/* instalasi tanpa data contoh: hanya bagan akun (konstanta ACCOUNTS), pengaturan, dan denah meja */
+function buildEmpty(now) {
+  return {
+    ver: 1, generatedAt: now, clearedAt: now,
+    settings: DEFAULT_SETTINGS(), session: { cashier: '', shift: 'Shift Pagi', manager: '' },
+    suppliers: [], ingredients: [], menu: [],
+    sales: [], pos: [], grns: [], moves: [], journals: [], expenses: [], opnames: [], wastes: [],
+    tables: TABLE_LAYOUT(), bills: [], kds: [], reservations: [], seq: {},
+  };
+}
+
 /* =========================================================================
    SIMULASI DATA DEMO (30 hari terakhir)
    ========================================================================= */
@@ -736,9 +761,7 @@ function buildDemo(now) {
   createPO(today + 8 * 3600000, 'SP02', lowSup.map(i => ({ ing: i.id, qty: 2, price: i.lastPrice })), 'draft', 'Draft dari saran pembelian');
 
   /* meja & bill terbuka */
-  const areas = ['Indoor', 'Indoor', 'Indoor', 'Indoor', 'Indoor', 'Indoor', 'Indoor', 'Indoor', 'Teras', 'Teras', 'Teras', 'Teras', 'Teras', 'VIP', 'VIP', 'Bar'];
-  const seats = [2, 2, 4, 4, 4, 4, 6, 6, 2, 2, 4, 4, 4, 8, 10, 4];
-  S.tables = areas.map((a, i) => ({ no: i + 1, area: a, seats: seats[i], status: 'kosong', bill: null, resv: null }));
+  S.tables = TABLE_LAYOUT();
   const nowT = Math.max(now, today + 12 * 3600000);
   const openBills = [
     { table: 3, customer: 'Bpk. Hartono', mins: 24, items: [['MN01', 2, 'Pedas sedang'], ['MN10', 2, ''], ['MN07', 1, '']] },

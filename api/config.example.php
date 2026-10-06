@@ -19,6 +19,8 @@ return [
     // string acak minimal 32 karakter, mis. hasil: php -r "echo bin2hex(random_bytes(32));"
     'app_secret'     => 'GANTI_DENGAN_STRING_ACAK_64_KARAKTER',
     'timezone'       => 'Asia/Jakarta',
+    // false = instalasi produksi: mulai tanpa data contoh (hanya bagan akun, peran, dan parameter)
+    'demo_data'      => false,
     // akun Pemilik pertama, dibuat oleh api/bin/migrate.php bila tabel users kosong.
     // Wajib ganti kata sandi saat pertama masuk; hapus blok ini setelah migrasi.
     'initial_owner'  => [

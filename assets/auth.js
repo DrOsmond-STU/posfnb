@@ -109,7 +109,7 @@ const ACT_PERM = {
   'waste-void': 'stok.waste', 'exp-void': 'kas.catat', 'resv-new': 'm:meja', 'resv-save': 'm:meja',
   'user-edit': 'pengguna.kelola', 'user-save': 'pengguna.kelola', 'role-toggle': 'pengguna.kelola',
   'purge-ask': 'data.hapus', 'purge-do': 'data.hapus', 'user-del': 'data.hapus', 'user-del-ok': 'data.hapus',
-  'clear-ask': 'data.hapus', 'clear-do': 'data.hapus',
+  'clear-ask': 'data.hapus', 'clear-do': 'data.hapus', 'oc-ask': 'data.hapus', 'oc-save': 'data.hapus',
 };
 function permOk(actName) {
   const p = ACT_PERM[actName];

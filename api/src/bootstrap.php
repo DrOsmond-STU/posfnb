@@ -19,14 +19,17 @@ set_error_handler(function (int $no, string $str, string $file, int $line): bool
 });
 
 // Konfigurasi berisi kredensial DB, jadi tidak pernah disimpan di repositori.
-// Lokasi default: <home>/posfnb-config/config.php (satu tingkat di atas document root).
+// Urutan pencarian: variabel lingkungan POSFNB_CONFIG, lalu <home>/posfnb-config/<nama-folder-situs>.php
+// (satu instalasi per domain), lalu <home>/posfnb-config/config.php. Semuanya di luar document root.
 function app_config(): array
 {
     static $cfg = null;
     if ($cfg !== null) {
         return $cfg;
     }
-    $path = getenv('POSFNB_CONFIG') ?: dirname(__DIR__, 3) . '/posfnb-config/config.php';
+    $dir = dirname(__DIR__, 3) . '/posfnb-config/';
+    $site = $dir . basename(dirname(__DIR__, 2)) . '.php';
+    $path = getenv('POSFNB_CONFIG') ?: (is_file($site) ? $site : $dir . 'config.php');
     if (!is_file($path)) {
         throw new RuntimeException('Berkas konfigurasi tidak ditemukan: ' . $path);
     }
@@ -37,6 +40,8 @@ function app_config(): array
         'trusted_origin' => '',
         'app_secret'     => '',
         'timezone'       => 'Asia/Jakarta',
+        // true: browser yang belum punya data diisi data contoh 30 hari; false: mulai kosong
+        'demo_data'      => true,
     ];
     if (strlen((string) $cfg['app_secret']) < 32) {
         throw new RuntimeException('app_secret di konfigurasi minimal 32 karakter.');

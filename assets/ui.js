@@ -314,6 +314,7 @@ function paintChrome() {
 let kdsTimer = null;
 /* setelah masuk: tampilkan aplikasi sesuai peran pengguna */
 function enterApp() {
+  if (S.volatile) { location.reload(); return; }   // pengaturan instalasi belum terbaca: muat ulang sebelum memakai data
   const u = currentUser();
   S.session.cashier = u.name;
   S.session.manager = u.name;
@@ -326,8 +327,21 @@ function enterApp() {
   render();
   window.scrollTo(0, 0);
 }
+/* pengaturan instalasi dari server; bila gagal, data dibuat sementara di memori dan tidak disimpan */
+async function loadAppConfig() {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch('api/app', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (r.ok) { DEMO = (await r.json()).demo !== false; return true; }
+    } catch (e) { /* coba lagi */ }
+    await new Promise(res => setTimeout(res, 600));
+  }
+  return false;
+}
 async function boot() {
-  loadState();
+  const cfgOk = await loadAppConfig();
+  if (cfgOk) loadState();
+  else { S = buildEmpty(Date.now()); S.volatile = true; }
   try { localStorage.removeItem('racikpos-auth-v1'); } catch (e) { /* abaikan */ }   // sisa autentikasi purwarupa lama
   try {
     if (localStorage.getItem('racikpos-collapsed')) document.getElementById('app').classList.add('collapsed');

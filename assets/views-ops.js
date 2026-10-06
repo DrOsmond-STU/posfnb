@@ -383,7 +383,7 @@ function receiptHTML(s) {
   const st = S.settings;
   return `<div class="receipt">
     <div class="c b big">${esc(st.outlet.toUpperCase())}</div>
-    <div class="c">${esc(st.branch)}<br>${esc(st.address)}<br>Telp ${esc(st.phone)}<br>NPWP ${esc(st.npwp)}</div>
+    <div class="c">${[st.branch, st.address, st.phone && 'Telp ' + st.phone, st.npwp && 'NPWP ' + st.npwp].filter(Boolean).map(esc).join('<br>')}</div>
     <div class="hr"></div>
     <div class="r"><span>${esc(s.no)}</span><span></span></div>
     <div class="r"><span>${fmtDate(s.t)} ${fmtTime(s.t)}</span><span>${esc(s.cashier.split(' ')[0])}</span></div>

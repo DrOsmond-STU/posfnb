@@ -18,7 +18,7 @@ VIEWS.kas = () => {
     ${kpi('percent', 'PB1 belum disetor', rp(accBalance('2-102')), 'Disetor ke Bapenda paling lambat tgl 10', true)}
   </div>
   <div class="row between">${periodSeg(UI.kas.period, 'kas-period', ['7d', '30d', 'month'])}
-    <div class="row"><button class="btn" data-act="cash-deposit">${icon('landmark', 16)} Setor kas ke bank</button><button class="btn" data-act="tax-pay">${icon('file-text', 16)} Setor PB1</button><button class="btn btn-primary" data-act="exp-new">${icon('plus', 16)} Catat biaya</button></div></div>
+    <div class="row">${can('data.hapus') && !S.journals.some(j => j.type === 'opening' && j.lines.some(l => l.acc === '1-101' || l.acc === '1-102')) ? `<button class="btn" data-act="oc-ask">${icon('wallet', 16)} Saldo awal kas &amp; bank</button>` : ''}<button class="btn" data-act="cash-deposit">${icon('landmark', 16)} Setor kas ke bank</button><button class="btn" data-act="tax-pay">${icon('file-text', 16)} Setor PB1</button><button class="btn btn-primary" data-act="exp-new">${icon('plus', 16)} Catat biaya</button></div></div>
   <div class="grid g-main" style="align-items:start">
     <div class="card"><div class="card-h"><h3>Bukti kas keluar (biaya operasional)</h3></div>
       <div class="table-wrap"><table class="tbl"><thead><tr><th>No. BKK</th><th>Tanggal</th><th>Akun</th><th>Keterangan</th><th>Dari</th><th class="num">Jumlah</th><th></th></tr></thead><tbody>
@@ -61,6 +61,20 @@ ACT['exp-void-ok'] = el => {
   voidExpense(Date.now(), e, reason, currentUser().name);
   audit('Biaya dibatalkan', `${e.no} (${rp(e.amount)}): ${reason}`);
   closeModal(true); refresh(); toast(`${e.no} dibatalkan.`, 'check');
+};
+ACT['oc-ask'] = () => {
+  openModal({ title: 'Saldo awal kas & bank', size: 'sm',
+    body: `<div class="muted">Isi saldo saat mulai memakai aplikasi. Dicatat sekali sebagai modal pemilik (akun 3-101).</div>
+      <div class="field"><label for="oc-kas">Kas outlet (Rp)</label><input class="input num" id="oc-kas" inputmode="numeric" placeholder="0" autofocus></div>
+      <div class="field"><label for="oc-bank">Bank (Rp)</label><input class="input num" id="oc-bank" inputmode="numeric" placeholder="0"></div>`,
+    foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="oc-save">${icon('save', 16)} Simpan</button>` });
+};
+ACT['oc-save'] = () => {
+  const num = id => +document.getElementById(id).value.replace(/\D/g, '') || 0;
+  const kas = num('oc-kas'), bank = num('oc-bank');
+  if (!kas && !bank) { toast('Isi saldo kas atau bank.', 'triangle-alert'); return; }
+  postOpeningCash(Date.now(), kas, bank);
+  closeModal(true); refresh(); toast(`Saldo awal kas ${rp(kas)} dan bank ${rp(bank)} dicatat.`, 'wallet');
 };
 ACT['cash-deposit'] = () => {
   const bal = accBalance('1-101');
@@ -394,7 +408,7 @@ VIEWS.pengaturan = () => {
         <div class="li">${icon('credit-card', 18)}<div class="grow"><div class="t">Mesin EDC</div><div class="s">BCA · terminal 88120931</div></div><span class="pill warn">Belum dites hari ini</span></div></div></div>
       <div class="card"><div class="card-h"><h3>Data</h3>${S.clearedAt ? `<span class="sub">dikosongkan ${fmtDT(S.clearedAt)}</span>` : '<span class="sub">berisi data contoh</span>'}</div><div class="card-b stack">
         <div class="muted">Data transaksi tersimpan di browser ini. ${S.clearedAt ? 'Data sudah dikosongkan dan siap dipakai.' : 'Saat ini berisi data contoh 30 hari. Kosongkan sebelum mulai memakai aplikasi dengan data sendiri.'}</div>
-        <div class="row">${can('data.hapus') ? `<button class="btn btn-danger" data-act="clear-ask">${icon('trash-2', 16)} Kosongkan data</button>` : ''}<button class="btn" data-act="reset-ask">${icon('refresh-cw', 16)} Isi ulang data contoh</button></div></div></div>
+        <div class="row">${can('data.hapus') ? `<button class="btn btn-danger" data-act="clear-ask">${icon('trash-2', 16)} Kosongkan data</button>` : ''}${DEMO ? `<button class="btn" data-act="reset-ask">${icon('refresh-cw', 16)} Isi ulang data contoh</button>` : ''}</div></div></div>
     </div>
   </div>`;
 };
@@ -411,7 +425,7 @@ ACT['st-save'] = () => {
 ACT['reset-ask'] = () => openModal({ title: 'Isi ulang data contoh?', size: 'sm',
   body: '<div>Semua data di browser ini (transaksi, PO, menu, bahan, pemasok) dihapus dan diganti data contoh 30 hari. Pakai hanya untuk latihan atau demo.</div>',
   foot: `<button class="btn" data-act="modal-close">Batal</button><button class="btn btn-primary" data-act="reset-do">${icon('refresh-cw', 16)} Atur ulang</button>` });
-ACT['reset-do'] = () => { resetState(); afterDataSwap(); closeModal(true); render(); paintChrome(); audit('Data dihapus', 'Isi ulang data contoh'); toast('Data contoh dibuat ulang.'); };
+ACT['reset-do'] = () => { if (!DEMO) { closeModal(true); return; } resetState(); afterDataSwap(); closeModal(true); render(); paintChrome(); audit('Data dihapus', 'Isi ulang data contoh'); toast('Data contoh dibuat ulang.'); };
 
 /* ---------- Kosongkan data (izin data.hapus) ---------- */
 function afterDataSwap() {

@@ -18,13 +18,19 @@ Spesifikasi lengkap untuk membangun versi produksi ada di folder [`docs/`](docs/
 ## Instalasi
 
 1. Buat basis data dan user MySQL.
-2. Salin `api/config.example.php` ke **luar** document root, yaitu `<home>/posfnb-config/config.php` (satu tingkat di atas folder situs). Isi kredensial DB, `trusted_origin`, `app_secret` acak, dan akun Pemilik pertama. Lokasi lain bisa ditunjuk lewat variabel lingkungan `POSFNB_CONFIG`.
+2. Salin `api/config.example.php` ke **luar** document root, di folder `<home>/posfnb-config/`. Isi kredensial DB, `trusted_origin`, `app_secret` acak, dan akun Pemilik pertama. Konfigurasi dicari dengan urutan berikut:
+   - variabel lingkungan `POSFNB_CONFIG`;
+   - `<home>/posfnb-config/<nama-folder-situs>.php`, misalnya `yamin.semestateknologiutama.com.php`. Dengan cara ini beberapa domain bisa memakai kode yang sama, masing-masing dengan database dan akunnya sendiri;
+   - `<home>/posfnb-config/config.php`.
+
+   Set `demo_data => false` untuk instalasi sungguhan. Aplikasi lalu mulai kosong: hanya bagan akun (COA), 6 peran beserta hak aksesnya, metode bayar, akun biaya, PB1 10%, service charge 5%, target food cost 35%, dan denah 16 meja. Bila `true` (bawaan), browser yang belum punya data diisi data contoh 30 hari.
 3. Jalankan migrasi dari terminal atau cron:
    ```bash
    php api/bin/migrate.php
    ```
    Perintah ini membuat tabel, peran bawaan, dan akun Pemilik pertama. Aman dijalankan berulang.
 4. Masuk dengan akun Pemilik. Sistem langsung meminta kata sandi baru. Setelah itu tambahkan pengguna lain di menu **Pengguna & Akses**.
+5. Isi profil outlet di **Pengaturan**, catat saldo awal di **Kas & Biaya → Saldo awal kas & bank**, tambahkan pemasok, bahan, dan menu, lalu isi stok awal lewat **Persediaan → Stok Opname** dengan pilihan *Saldo awal persediaan*.
 
 `.htaccess` mengarahkan semua `/api/*` ke `api/index.php`. Folder `docs/`, `tools/`, `api/src`, `api/bin`, `api/migrations`, serta berkas `.md`, `.sql`, dan berkas tersembunyi diblokir (403).
 
