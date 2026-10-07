@@ -18,7 +18,7 @@ $routes = [
         Http::json(200, ['ok' => true, 'db' => $db, 'time' => gmdate('c')]);
     }],
     // pengaturan instalasi yang dibutuhkan aplikasi sebelum masuk (tanpa data rahasia)
-    ['GET',  '#^/app$#',                     function () { Http::json(200, ['demo' => (bool) app_config()['demo_data']]); }],
+    ['GET',  '#^/app$#',                     function () { Http::json(200, ['demo' => (bool) app_config()['demo_data'], 'accounts_locked' => Auth::accountsLocked()]); }],
     ['GET',  '#^/auth/me$#',                 [Auth::class, 'me']],
     ['POST', '#^/auth/login$#',              [Auth::class, 'login']],
     ['GET',  '#^/auth/pin-users$#',          [Auth::class, 'pinUsers']],

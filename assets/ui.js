@@ -332,7 +332,7 @@ async function loadAppConfig() {
   for (let i = 0; i < 3; i++) {
     try {
       const r = await fetch('api/app', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      if (r.ok) { DEMO = (await r.json()).demo !== false; return true; }
+      if (r.ok) { const d = await r.json(); DEMO = d.demo !== false; TRIAL_LOCK = !!d.accounts_locked; return true; }
     } catch (e) { /* coba lagi */ }
     await new Promise(res => setTimeout(res, 600));
   }

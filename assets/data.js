@@ -199,6 +199,8 @@ const ym = t => { const d = new Date(t); return String(d.getFullYear()).slice(2)
 let S = null;
 /* true: browser tanpa data diisi data contoh; false (instalasi produksi): mulai kosong. Diatur server lewat /api/app. */
 let DEMO = true;
+/* mode uji coba: akun & hak akses dikunci di server (diatur lewat /api/app) */
+let TRIAL_LOCK = false;
 
 function saveState() {
   if (S && S.volatile) return;   // pengaturan instalasi belum terbaca; jangan simpan apa pun

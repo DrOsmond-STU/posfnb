@@ -21,6 +21,8 @@ return [
     'timezone'       => 'Asia/Jakarta',
     // false = instalasi produksi: mulai tanpa data contoh (hanya bagan akun, peran, dan parameter)
     'demo_data'      => false,
+    // true = mode uji coba: akun, kata sandi, PIN, dan hak akses dikunci (tidak bisa diubah dari aplikasi)
+    'lock_accounts'  => false,
     // akun Pemilik pertama, dibuat oleh api/bin/migrate.php bila tabel users kosong.
     // Wajib ganti kata sandi saat pertama masuk; hapus blok ini setelah migrasi.
     'initial_owner'  => [

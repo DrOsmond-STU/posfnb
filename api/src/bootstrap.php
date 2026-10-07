@@ -42,6 +42,8 @@ function app_config(): array
         'timezone'       => 'Asia/Jakarta',
         // true: browser yang belum punya data diisi data contoh 30 hari; false: mulai kosong
         'demo_data'      => true,
+        // true: mode uji coba — akun, kata sandi, PIN, dan hak akses tidak bisa diubah dari aplikasi
+        'lock_accounts'  => false,
     ];
     if (strlen((string) $cfg['app_secret']) < 32) {
         throw new RuntimeException('app_secret di konfigurasi minimal 32 karakter.');

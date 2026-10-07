@@ -30,6 +30,7 @@ final class Users
     public static function save(?int $id): void
     {
         $me = Auth::requirePerm('pengguna.kelola');
+        Auth::assertAccountsUnlocked();
         $b = Http::body();
         $name = Http::str('name', 120);
         $email = mb_strtolower(Http::str('email', 160));
@@ -96,6 +97,7 @@ final class Users
     public static function delete(int $id): void
     {
         $me = Auth::requirePerm('pengguna.kelola');
+        Auth::assertAccountsUnlocked();
         if (!Permissions::userHas($me, 'data.hapus')) {
             Audit::log($me, 'Akses ditolak', 'API: data.hapus');
             throw new ApiError(403, 'FORBIDDEN', 'Anda tidak punya izin untuk menghapus data permanen.', ['permission' => 'data.hapus']);
@@ -135,6 +137,7 @@ final class Users
     public static function setPermission(string $roleId): void
     {
         $me = Auth::requirePerm('pengguna.kelola');
+        Auth::assertAccountsUnlocked();
         $perm = Http::str('permission', 40);
         $granted = !empty(Http::body()['granted']);
         $role = Db::one('SELECT * FROM roles WHERE id = ?', [$roleId]);

@@ -68,6 +68,19 @@ final class Auth
         return hash_equals($expected, $parts[2]) && time() - (int) $parts[1] < self::DEVICE_TTL;
     }
 
+    /** Mode uji coba: akun & hak akses dikunci agar tetap sama untuk semua peserta. */
+    public static function accountsLocked(): bool
+    {
+        return !empty(app_config()['lock_accounts']);
+    }
+
+    public static function assertAccountsUnlocked(): void
+    {
+        if (self::accountsLocked()) {
+            throw new ApiError(403, 'ACCOUNTS_LOCKED', 'Mode uji coba: akun, kata sandi, PIN, dan hak akses dikunci agar tetap sama untuk semua peserta. Hubungi pengelola aplikasi bila perlu perubahan.');
+        }
+    }
+
     /** Data pengguna yang aman dikirim ke klien. */
     public static function publicUser(array $u): array
     {
@@ -80,7 +93,8 @@ final class Auth
             'role'                 => $u['role_id'],
             'role_name'            => $role ? $role['name'] : $u['role_id'],
             'has_pin'              => !empty($u['pin_hash']),
-            'must_change_password' => (bool) $u['must_change_password'],
+            // mode uji coba: kata sandi bersama tidak boleh diganti, jadi tidak ada paksaan ganti
+            'must_change_password' => (bool) $u['must_change_password'] && !self::accountsLocked(),
         ];
     }
 
@@ -343,6 +357,7 @@ final class Auth
     public static function changeCredentials(): void
     {
         $s = self::require();
+        Auth::assertAccountsUnlocked();
         $b = Http::body();
         $current = (string) ($b['current_password'] ?? '');
         $newPw = (string) ($b['new_password'] ?? '');

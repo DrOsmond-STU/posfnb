@@ -23,6 +23,8 @@ Spesifikasi lengkap untuk membangun versi produksi ada di folder [`docs/`](docs/
    - `<home>/posfnb-config/<nama-folder-situs>.php`, misalnya `yamin.semestateknologiutama.com.php`. Dengan cara ini beberapa domain bisa memakai kode yang sama, masing-masing dengan database dan akunnya sendiri;
    - `<home>/posfnb-config/config.php`.
 
+   Untuk instalasi uji coba yang akunnya dipakai bersama banyak peserta, set `lock_accounts => true`. Akun, kata sandi, PIN, dan hak akses lalu tidak bisa diubah dari aplikasi (ditolak server dengan `ACCOUNTS_LOCKED`), dan tidak ada paksaan ganti kata sandi. Perubahan akun hanya lewat skrip CLI di server.
+
    Set `demo_data => false` untuk instalasi sungguhan. Aplikasi lalu mulai kosong: hanya bagan akun (COA), 6 peran beserta hak aksesnya, metode bayar, akun biaya, PB1 10%, service charge 5%, target food cost 35%, dan denah 16 meja. Bila `true` (bawaan), browser yang belum punya data diisi data contoh 30 hari.
 3. Jalankan migrasi dari terminal atau cron:
    ```bash

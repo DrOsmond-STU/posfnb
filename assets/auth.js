@@ -370,6 +370,12 @@ function askDiscountApproval(pct, onOk) {
 /* ---------- Profil sendiri & wajib ganti kata sandi ---------- */
 function profileModal(forced) {
   const u = currentUser();
+  if (TRIAL_LOCK) {
+    openModal({ title: 'Profil saya', size: 'sm',
+      body: `<div class="row" style="flex-wrap:nowrap"><span class="avatar" style="width:48px;height:48px;background:var(--brand-100);color:var(--brand-700)">${esc(u.initials)}</span><div><div class="strong">${esc(u.name)}</div><div class="muted">${esc(u.email)}</div></div><span class="spacer"></span>${rolePill(u.role)}</div><div class="alert info">${icon('shield', 16)}<div><b>Mode uji coba.</b> Akun, kata sandi, PIN, dan hak akses dikunci agar tetap sama untuk semua peserta uji coba. Perubahan hanya bisa dilakukan pengelola aplikasi.</div></div>`,
+      foot: '<button class="btn btn-primary" data-act="modal-close">Tutup</button>' });
+    return;
+  }
   openModal({
     title: forced ? 'Ganti kata sandi awal' : 'Profil saya', size: 'sm',
     onClose: forced ? () => { if (currentUser() && currentUser().must_change_password) setTimeout(() => profileModal(true), 0); } : null,
@@ -416,22 +422,22 @@ VIEWS.pengguna = () => {
   let body = '';
   if (T === 'users') {
     body = `<div class="strip">${ADMIN.roles.map(r => `<div><div class="s-l">${esc(r.name)}</div><div class="s-v">${active.filter(u => u.role === r.id).length}</div></div>`).join('')}</div>
-      <div class="row between"><div class="muted">${active.length} pengguna aktif dari ${ADMIN.users.length}. Pengguna baru dan kata sandi yang diatur ulang wajib diganti saat pertama masuk.</div>
-      <button class="btn btn-primary" data-act="user-edit">${icon('plus', 16)} Tambah pengguna</button></div>
+      ${TRIAL_LOCK ? `<div class="alert info">${icon('shield', 16)}<div><b>Mode uji coba.</b> Akun, kata sandi, PIN, dan hak akses dikunci agar tetap sama untuk semua peserta uji coba. Perubahan hanya bisa dilakukan pengelola aplikasi.</div></div>` : `<div class="row between"><div class="muted">${active.length} pengguna aktif dari ${ADMIN.users.length}. Pengguna baru dan kata sandi yang diatur ulang wajib diganti saat pertama masuk.</div>
+      <button class="btn btn-primary" data-act="user-edit">${icon('plus', 16)} Tambah pengguna</button></div>`}
       <div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>Pengguna</th><th>Peran</th><th>PIN kasir</th><th>Masuk terakhir</th><th>Status</th><th></th></tr></thead><tbody>
       ${ADMIN.users.map(u => `<tr><td><div class="row" style="flex-wrap:nowrap;gap:10px"><span class="avatar" style="background:var(--brand-100);color:var(--brand-700)">${esc(u.initials)}</span><div><div class="strong">${esc(u.name)}${u.id === currentUser().id ? ' <span class="faint">(Anda)</span>' : ''}</div><div class="sub">${esc(u.email)}</div></div></div></td>
         <td>${rolePill(u.role)}</td><td>${u.has_pin ? '<span class="pill ok">Aktif</span>' : '<span class="faint">Belum diatur</span>'}</td>
         <td>${u.last_login ? fmtDT(u.last_login) : '<span class="faint">Belum pernah</span>'}${u.must_change_password ? ' <span class="pill warn">Wajib ganti sandi</span>' : ''}</td><td>${u.active ? '<span class="pill ok">Aktif</span>' : '<span class="pill">Nonaktif</span>'}</td>
-        <td><button class="btn btn-sm btn-ghost" data-act="user-edit" data-id="${u.id}">${icon('pencil', 14)} Ubah</button></td></tr>`).join('')}
+        <td>${TRIAL_LOCK ? '' : `<button class="btn btn-sm btn-ghost" data-act="user-edit" data-id="${u.id}">${icon('pencil', 14)} Ubah</button>`}</td></tr>`).join('')}
       </tbody></table></div></div>`;
   } else if (T === 'roles') {
     const mods = NAV.flatMap(g => g.items.map(i => ['m:' + i[0], i[1], g.group]));
     const cell = (r, p) => {
       const on = r.perms.includes('*') || r.perms.includes(p);
-      return `<td style="text-align:center"><input type="checkbox" class="perm-cb" ${on ? 'checked' : ''} ${r.locked ? 'disabled' : ''} data-ch="role-toggle" data-role="${r.id}" data-perm="${p}" aria-label="${esc(r.name)}: ${esc(permLabel(p))}"></td>`;
+      return `<td style="text-align:center"><input type="checkbox" class="perm-cb" ${on ? 'checked' : ''} ${r.locked || TRIAL_LOCK ? 'disabled' : ''} data-ch="role-toggle" data-role="${r.id}" data-perm="${p}" aria-label="${esc(r.name)}: ${esc(permLabel(p))}"></td>`;
     };
     const rows = (list, title) => `<tr class="group"><td colspan="${ADMIN.roles.length + 1}">${title}</td></tr>` + list.map(([p, l, g]) => `<tr><td><div class="strong" style="font-weight:500">${esc(l)}</div><div class="sub">${esc(g)}</div></td>${ADMIN.roles.map(r => cell(r, p)).join('')}</tr>`).join('');
-    body = `<div class="alert info">${icon('shield', 16)}<div>Perubahan langsung disimpan di server dan berlaku pada permintaan berikutnya. Peran <b>Pemilik</b> selalu punya akses penuh dan tidak bisa diubah.</div></div>
+    body = `${TRIAL_LOCK ? `<div class="alert info">${icon('shield', 16)}<div><b>Mode uji coba.</b> Akun, kata sandi, PIN, dan hak akses dikunci agar tetap sama untuk semua peserta uji coba. Perubahan hanya bisa dilakukan pengelola aplikasi.</div></div>` : ''}<div class="alert info">${icon('shield', 16)}<div>Perubahan langsung disimpan di server dan berlaku pada permintaan berikutnya. Peran <b>Pemilik</b> selalu punya akses penuh dan tidak bisa diubah.</div></div>
       <div class="grid g-3">${ADMIN.roles.map(r => `<div class="card card-b stack" style="gap:6px"><div class="row between">${rolePill(r.id)}<span class="muted" style="font-size:12px">${ADMIN.users.filter(u => u.role === r.id).length} pengguna</span></div><div style="font-size:13px">${esc(r.desc)}</div><div class="faint" style="font-size:12px">${r.perms.includes('*') ? 'Semua izin' : r.perms.length + ' izin'}</div></div>`).join('')}</div>
       <div class="card"><div class="table-wrap"><table class="tbl perm-matrix"><thead><tr><th>Izin</th>${ADMIN.roles.map(r => `<th style="text-align:center">${esc(r.name)}</th>`).join('')}</tr></thead><tbody>
       ${rows(mods, 'AKSES MODUL')}${rows(ACTION_PERMS, 'AKSI')}</tbody></table></div></div>`;
